@@ -175,6 +175,9 @@ export default function StackPage() {
           <h1 className="text-2xl sm:text-3xl font-bold text-[#3C3C3C] mb-2">
             How BRACE Works
           </h1>
+          <p className="text-xs font-semibold tracking-widest uppercase text-[#AFAFAF] mb-2">
+            Biomechanical Real-time Adaptive Clinical Evaluation
+          </p>
           <p className="text-[15px] text-[#777777] max-w-lg mx-auto">
             An unsupervised approach to real-time movement analysis — no labels,
             no training data, just math.
