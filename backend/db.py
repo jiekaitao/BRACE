@@ -87,6 +87,12 @@ async def ensure_indexes() -> None:
         "created_at", expireAfterSeconds=30 * 24 * 3600,
     )
 
+    # gemini_guidelines: unique compound for cached guideline lookups
+    await db["gemini_guidelines"].create_index(
+        [("injury_type", 1), ("injury_severity", 1), ("injury_location", 1)],
+        unique=True,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Document helpers
@@ -179,6 +185,11 @@ def make_workout_summary_doc(
     injury_risks: list,
     fatigue_score: float | None = None,
     video_name: str | None = None,
+    activity_labels: dict | None = None,
+    biomechanics_timeline: list | None = None,
+    fatigue_timeline: dict | None = None,
+    form_score_avg: float | None = None,
+    guideline_name: str | None = None,
 ) -> dict:
     """Create a workout summary document."""
     return {
@@ -188,5 +199,26 @@ def make_workout_summary_doc(
         "clusters": clusters,
         "injury_risks": injury_risks,
         "fatigue_score": fatigue_score,
+        "activity_labels": activity_labels,
+        "biomechanics_timeline": biomechanics_timeline,
+        "fatigue_timeline": fatigue_timeline,
+        "form_score_avg": form_score_avg,
+        "guideline_name": guideline_name,
+        "created_at": datetime.now(timezone.utc),
+    }
+
+
+def make_guideline_doc(
+    injury_type: str,
+    injury_severity: str,
+    injury_location: str,
+    content: dict,
+) -> dict:
+    """Create a cached Gemini guideline document."""
+    return {
+        "injury_type": injury_type,
+        "injury_severity": injury_severity,
+        "injury_location": injury_location,
+        "content": content,
         "created_at": datetime.now(timezone.utc),
     }

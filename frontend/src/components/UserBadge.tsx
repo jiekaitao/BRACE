@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function UserBadge() {
@@ -9,11 +10,15 @@ export default function UserBadge() {
 
   return (
     <div className="flex items-center gap-2">
-      <div className="w-7 h-7 rounded-full bg-[#DDF4FF] flex items-center justify-center">
+      <Link
+        href="/dashboard"
+        className="w-7 h-7 rounded-full bg-[#DDF4FF] flex items-center justify-center no-underline hover:ring-2 hover:ring-[#1CB0F6] transition-shadow"
+        title="Dashboard"
+      >
         <span className="text-xs font-bold text-[#1CB0F6]">
           {user.username[0].toUpperCase()}
         </span>
-      </div>
+      </Link>
       <span className="text-sm font-bold text-[#3C3C3C]">{user.username}</span>
       <button
         onClick={logout}

@@ -385,3 +385,102 @@ export interface ChatResponse {
   extracted_profile?: InjuryProfile | null;
   profile_complete?: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Dashboard types
+// ---------------------------------------------------------------------------
+
+/** Workout list item (compact). */
+export interface WorkoutSummary {
+  id: string;
+  created_at: string;
+  duration_sec: number;
+  activity: string;
+  form_score_avg: number | null;
+  fatigue_score: number | null;
+  risk_count: number;
+  video_name: string | null;
+}
+
+/** Full workout detail from GET /api/dashboard/workouts/:id. */
+export interface WorkoutDetail {
+  id: string;
+  created_at: string;
+  duration_sec: number;
+  video_name: string | null;
+  clusters: Record<string, {
+    count: number;
+    mean_score: number;
+    anomaly_count: number;
+    activity_label?: string;
+    composite_fatigue?: number;
+  }>;
+  injury_risks: InjuryRisk[];
+  fatigue_score: number | null;
+  activity_labels: Record<string, string> | null;
+  biomechanics_timeline: Array<{
+    t: number;
+    fppa_left: number;
+    fppa_right: number;
+    hip_drop: number;
+    trunk_lean: number;
+    asymmetry: number;
+  }> | null;
+  fatigue_timeline: FatigueTimeline | null;
+  form_score_avg: number | null;
+  guideline_name: string | null;
+}
+
+/** Trend data across workouts. */
+export interface TrendData {
+  dates: string[];
+  form_scores: (number | null)[];
+  fatigue_scores: (number | null)[];
+  injury_counts: number[];
+}
+
+/** Injury event from history endpoint. */
+export interface InjuryEvent {
+  workout_id: string;
+  workout_date: string;
+  joint: string;
+  risk: string;
+  severity: "low" | "medium" | "high";
+  value: number | null;
+  threshold: number | null;
+}
+
+/** ROM entry in guidelines. */
+export interface SafeROM {
+  joint: string;
+  motion: string;
+  min_degrees: number;
+  max_degrees: number;
+}
+
+/** Rehab protocol phase. */
+export interface RehabProtocol {
+  phase: string;
+  duration: string;
+  goals: string;
+  exercises: string[];
+}
+
+/** Recommended exercise. */
+export interface RecommendedExercise {
+  name: string;
+  sets: string;
+  reps: string;
+  notes: string;
+}
+
+/** Gemini-generated injury guidelines. */
+export interface InjuryGuidelines {
+  summary: string;
+  safe_rom: SafeROM[];
+  red_flags: string[];
+  rehab_protocols: RehabProtocol[];
+  recommended_exercises: RecommendedExercise[];
+  activities_to_avoid: string[];
+  references: string[];
+}

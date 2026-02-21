@@ -6,9 +6,11 @@ import Link from "next/link";
 import DuoButton from "@/components/ui/DuoButton";
 import PathCard from "@/components/ui/PathCard";
 import DemoVideoModal from "@/components/DemoVideoModal";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function HomePage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [showDemoModal, setShowDemoModal] = useState(false);
 
   const onDemoSelect = (filename: string) => {
@@ -91,6 +93,20 @@ export default function HomePage() {
           </DuoButton>
         </div>
       </div>
+
+      {/* Dashboard CTA for logged-in users */}
+      {user && (
+        <div
+          className="w-full max-w-2xl mb-8 fade-up"
+          style={{ "--stagger-index": 3 } as React.CSSProperties}
+        >
+          <Link href="/dashboard" className="no-underline">
+            <DuoButton variant="secondary" fullWidth>
+              My Dashboard
+            </DuoButton>
+          </Link>
+        </div>
+      )}
 
       {/* Demo video modal */}
       {showDemoModal && (
