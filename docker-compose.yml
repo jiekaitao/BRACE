@@ -3,7 +3,7 @@ x-backend-common: &backend-common
     - "8001:8000"
   environment:
     - PIPELINE_BACKEND=${PIPELINE_BACKEND:-legacy}
-    - GOOGLE_GEMINI_API_KEY=${GOOGLE_GEMINI_API_KEY:-AIzaSyDrfeCSYbecPiJ1aLWUlY9MdGDBA96__W8}
+    - GOOGLE_GEMINI_API_KEY=${GOOGLE_GEMINI_API_KEY:-}
     - MONGODB_URI=mongodb://mongo:27017/brace
     - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
     - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-}
@@ -33,7 +33,6 @@ x-backend-common: &backend-common
     - ./backend/tts_elevenlabs.py:/app/tts_elevenlabs.py:ro
     - ./backend/device_utils.py:/app/device_utils.py:ro
     - ./backend/vectorai_store.py:/app/vectorai_store.py:ro
-    - ./backend/vector_activity_classifier.py:/app/vector_activity_classifier.py:ro
     - ./backend/vector_movement_search.py:/app/vector_movement_search.py:ro
     - ./backend/concussion_pipeline.py:/app/concussion_pipeline.py:ro
     - ./backend/vdss_proto:/app/vdss_proto:ro

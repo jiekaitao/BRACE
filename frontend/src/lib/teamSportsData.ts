@@ -8,7 +8,6 @@ export interface Sport {
   id: string;
   name: string;
   image: string;
-  gradient: string;
   videos: SportVideo[];
 }
 
@@ -17,7 +16,6 @@ export const SPORTS: Sport[] = [
     id: "basketball",
     name: "Basketball",
     image: "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=600&q=80",
-    gradient: "from-[#FF4B4B] to-[#FF9600]",
     videos: [
       {
         id: "bball-1",
@@ -40,7 +38,6 @@ export const SPORTS: Sport[] = [
     id: "football",
     name: "Football",
     image: "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=600&q=80",
-    gradient: "from-[#58CC02] to-[#1CB0F6]",
     videos: [
       {
         id: "fb-1",
@@ -63,7 +60,6 @@ export const SPORTS: Sport[] = [
     id: "soccer",
     name: "Soccer",
     image: "https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=600&q=80",
-    gradient: "from-[#CE82FF] to-[#1CB0F6]",
     videos: [
       {
         id: "soc-1",

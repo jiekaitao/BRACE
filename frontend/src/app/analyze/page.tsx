@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { Suspense } from "react";
 import { useAnalysisWebSocket } from "@/hooks/useAnalysisWebSocket";
 import { getApiBase } from "@/lib/api";
@@ -272,22 +271,6 @@ function AnalyzeContent() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F7F7]">
-      {/* Top bar */}
-      <header className="flex items-center justify-between px-5 py-3 bg-white border-b-2 border-[#E5E5E5]">
-        <Link href="/dashboard" className="text-base font-bold text-[#3C3C3C] no-underline">
-          BRACE
-        </Link>
-        <div className="flex items-center gap-2">
-          <div
-            className={`w-2.5 h-2.5 rounded-full ${!connected ? "bg-[#EA2B2B]" : replaying ? "bg-[#F5A623]" : "bg-[#58CC02]"
-              }`}
-          />
-          <span className="text-xs font-bold text-[#777777]">
-            {!connected ? "Offline" : replaying ? "Replaying" : "Live"}
-          </span>
-        </div>
-      </header>
-
       {/* Main content */}
       <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4 max-w-[1600px] mx-auto w-full">
         {/* Left column: Video + Graphs */}
@@ -298,6 +281,18 @@ function AnalyzeContent() {
               className="relative bg-black rounded-[16px] overflow-hidden w-full"
               style={{ aspectRatio: "16/9" }}
             >
+              {/* Connection status badge */}
+              <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/60 rounded-full px-2.5 py-1 z-20">
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    !connected ? "bg-[#EA2B2B]" : replaying ? "bg-[#F5A623]" : "bg-[#58CC02]"
+                  }`}
+                />
+                <span className="text-[11px] font-bold text-white/80">
+                  {!connected ? "Offline" : replaying ? "Replaying" : "Live"}
+                </span>
+              </div>
+
               {/* Webcam mode (not demo) */}
               {mode === "webcam" && active && !isDemo && (
                 <CameraFeed onVideoReady={onCameraReady} mirrored />
