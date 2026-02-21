@@ -13,6 +13,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+FRONTEND_PID_FILE="$SCRIPT_DIR/.frontend.pid"
+
 # ── Parse arguments ──
 DEV_MODE=false
 FORCE_PROFILE=""
@@ -79,7 +81,13 @@ echo ""
 case "$ACTION" in
     up)
         echo "[run] Starting BRACE with profile=$PROFILE ..."
-        docker compose $COMPOSE_FILES --profile "$PROFILE" up -d
+
+        if [ "$DEV_MODE" = true ]; then
+            # Dev mode: run frontend locally for hot-reload, skip it in Docker
+            docker compose $COMPOSE_FILES --profile "$PROFILE" up -d --scale frontend=0
+        else
+            docker compose $COMPOSE_FILES --profile "$PROFILE" up -d
+        fi
 
         # ── Expose via Cloudflare Tunnel (braceml.com) ──
         if command -v cloudflared &>/dev/null; then
@@ -101,9 +109,25 @@ case "$ACTION" in
             fi
         fi
 
+        # ── Start local Next.js dev server in dev mode ──
+        if [ "$DEV_MODE" = true ]; then
+            echo ""
+            echo "[run] Starting local Next.js dev server (HMR enabled)..."
+            cd "$SCRIPT_DIR/frontend"
+            npm run dev &
+            FRONTEND_PID=$!
+            echo "$FRONTEND_PID" > "$FRONTEND_PID_FILE"
+            cd "$SCRIPT_DIR"
+            echo "[run] Next.js PID: $FRONTEND_PID (saved to .frontend.pid)"
+        fi
+
         echo ""
         echo "[run] Services started:"
-        echo "  Frontend:  http://localhost:3000"
+        if [ "$DEV_MODE" = true ]; then
+            echo "  Frontend:  http://localhost:3000 (local, HMR enabled)"
+        else
+            echo "  Frontend:  http://localhost:3000 (Docker)"
+        fi
         echo "  Backend:   http://localhost:8001"
         echo "  MongoDB:   mongodb://localhost:27017"
         echo ""
@@ -111,7 +135,17 @@ case "$ACTION" in
         echo "[run] Stop:      ./run.sh down"
         ;;
     down)
-        echo "[run] Stopping all services..."
+        # Kill local Next.js dev server if running
+        if [ -f "$FRONTEND_PID_FILE" ]; then
+            FRONTEND_PID=$(cat "$FRONTEND_PID_FILE")
+            if kill -0 "$FRONTEND_PID" 2>/dev/null; then
+                echo "[run] Stopping local Next.js dev server (PID $FRONTEND_PID)..."
+                kill "$FRONTEND_PID" 2>/dev/null || true
+            fi
+            rm -f "$FRONTEND_PID_FILE"
+        fi
+
+        echo "[run] Stopping all Docker services..."
         docker compose $COMPOSE_FILES --profile nvidia --profile cpu down
         ;;
     logs)
