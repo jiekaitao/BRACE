@@ -55,6 +55,14 @@ try:
 except ImportError:
     from backend.db import get_collection, make_game_doc, make_game_player_doc, make_player_frame_doc
 
+try:
+    from player_risk_engine import PlayerRiskEngine
+except ImportError:
+    try:
+        from backend.player_risk_engine import PlayerRiskEngine
+    except ImportError:
+        PlayerRiskEngine = None
+
 
 # Frames to wait before triggering jersey detection for a player (~3s at 30fps)
 _JERSEY_DETECT_FRAME_THRESHOLD = 90
@@ -126,6 +134,7 @@ async def process_basketball_game(
     )
 
     manager = SubjectManager(fps=fps, cluster_threshold=cluster_threshold)
+    risk_engine = PlayerRiskEngine(fps=fps) if PlayerRiskEngine is not None else None
     resolver = (
         IdentityResolver(reid_extractor, cross_cut_extractor=cross_cut_extractor)
         if reid_extractor is not None
@@ -258,6 +267,33 @@ async def process_basketball_game(
 
                 response = analyzer.process_frame(landmarks_xyzv, img_wh=(width, height))
 
+                # Feed frame into risk engine
+                if risk_engine is not None:
+                    quality = response.get("quality")
+                    # Get cluster quality from the analyzer's quality tracker
+                    cluster_quality = None
+                    if hasattr(analyzer, '_quality_tracker') and analyzer._quality_tracker is not None:
+                        qt = analyzer._quality_tracker
+                        cid = response.get("cluster_id")
+                        if cid is not None and hasattr(qt, '_cluster_state'):
+                            cs = qt._cluster_state.get(cid)
+                            if cs is not None:
+                                cluster_quality = cs.latest_quality
+                    # Get activity profile name
+                    activity_name = None
+                    if hasattr(analyzer, '_quality_tracker') and analyzer._quality_tracker is not None:
+                        profile = analyzer._quality_tracker._current_profile
+                        if profile is not None:
+                            activity_name = profile.name
+                    risk_engine.process_frame(
+                        subject_id=subject_id,
+                        frame_idx=frame_idx,
+                        video_time=frame_idx / fps,
+                        quality=quality,
+                        cluster_quality=cluster_quality,
+                        activity_profile_name=activity_name,
+                    )
+
                 # Run re-analysis if needed
                 if analyzer.needs_reanalysis():
                     await loop.run_in_executor(executor, analyzer.run_analysis)
@@ -301,14 +337,16 @@ async def process_basketball_game(
 
                 # Store periodic snapshots to MongoDB
                 if frame_idx > 0 and frame_idx % _SNAPSHOT_INTERVAL == 0:
-                    quality = response.get("quality")
-                    if quality:
+                    snap_quality = response.get("quality")
+                    if snap_quality:
+                        snap_risk_status = risk_engine.get_status(subject_id) if risk_engine else None
                         doc = make_player_frame_doc(
                             game_id=game_id,
                             subject_id=subject_id,
                             frame_idx=frame_idx,
-                            quality=quality,
-                            biomechanics=quality.get("biomechanics"),
+                            quality=snap_quality,
+                            biomechanics=snap_quality.get("biomechanics"),
+                            risk_status=snap_risk_status,
                         )
                         # Fire-and-forget insert
                         asyncio.ensure_future(frames_col.insert_one(doc))
@@ -340,6 +378,7 @@ async def process_basketball_game(
                         "frame": frame_idx,
                         "total": total_frames,
                         "player_count": len(manager.analyzers),
+                        "player_risk": risk_engine.get_all_statuses() if risk_engine else {},
                     }
                     try:
                         result = progress_callback(msg)
@@ -425,15 +464,8 @@ async def process_basketball_game(
         jersey_color = jersey_info["jersey_color_name"] if jersey_info else None
         team_id = team_assignments.get(subject_id)
 
-        # Collect injury events from quality tracker
-        injury_events = []
-        quality_data = None
-        if hasattr(analyzer, '_quality_tracker') and analyzer._quality_tracker is not None:
-            qt = analyzer._quality_tracker
-            if hasattr(qt, 'injury_events'):
-                injury_events = qt.injury_events
-            if hasattr(qt, 'get_quality'):
-                quality_data = qt.get_quality()
+        # Collect risk data from risk engine
+        risk_summary = risk_engine.get_player_summary(subject_id) if risk_engine else None
 
         doc = make_game_player_doc(
             game_id=game_id,
@@ -441,9 +473,13 @@ async def process_basketball_game(
             jersey_number=jersey_number,
             team_id=team_id,
             jersey_color=jersey_color,
+            risk_status=risk_summary["risk_status"] if risk_summary else None,
+            risk_history=risk_summary["risk_history"] if risk_summary else [],
+            workload=risk_summary["workload"] if risk_summary else None,
+            pull_recommended=risk_summary["pull_recommended"] if risk_summary else False,
+            pull_reasons=risk_summary["pull_reasons"] if risk_summary else [],
         )
-        doc["injury_events"] = injury_events
-        doc["final_quality"] = quality_data
+        doc["injury_events"] = risk_summary["injury_events"] if risk_summary else []
         doc["analysis_summary"] = summary
 
         # Upsert player document

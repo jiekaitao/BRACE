@@ -30,6 +30,12 @@ class MultiPersonTracker:
     ):
         from device_utils import get_best_device
         _best = get_best_device()
+        # Auto-convert to TensorRT FP16 engine when available (2-3x speedup)
+        try:
+            from tensorrt_utils import ensure_tensorrt_engine
+            model_name = ensure_tensorrt_engine(model_name)
+        except ImportError:
+            pass
         self.model = YOLO(model_name)
         self._is_engine = model_name.endswith(".engine")
         self._use_half = (_best == "cuda")

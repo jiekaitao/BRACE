@@ -38,6 +38,7 @@ x-backend-common: &backend-common
     - ./backend/vector_movement_search.py:/app/vector_movement_search.py:ro
     - ./backend/dashboard_api.py:/app/dashboard_api.py:ro
     - ./backend/basketball_processor.py:/app/basketball_processor.py:ro
+    - ./backend/player_risk_engine.py:/app/player_risk_engine.py:ro
     - ./backend/jersey_detector.py:/app/jersey_detector.py:ro
     - ./backend/vdss_proto:/app/vdss_proto:ro
     - ./brace/core/motion_segments.py:/app/brace/core/motion_segments.py:ro

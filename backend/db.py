@@ -144,6 +144,11 @@ def make_game_player_doc(
     jersey_number: int | None = None,
     team_id: int | None = None,
     jersey_color: str | None = None,
+    risk_status: str | None = None,
+    risk_history: list | None = None,
+    workload: dict | None = None,
+    pull_recommended: bool = False,
+    pull_reasons: list | None = None,
 ) -> dict:
     """Create a game player document."""
     return {
@@ -153,8 +158,12 @@ def make_game_player_doc(
         "team_id": team_id,
         "jersey_color": jersey_color,
         "injury_events": [],
-        "final_quality": None,
         "analysis_summary": None,
+        "risk_status": risk_status,
+        "risk_history": risk_history or [],
+        "workload": workload,
+        "pull_recommended": pull_recommended,
+        "pull_reasons": pull_reasons or [],
         "created_at": datetime.now(timezone.utc),
         "updated_at": datetime.now(timezone.utc),
     }
@@ -166,6 +175,7 @@ def make_player_frame_doc(
     frame_idx: int,
     quality: dict | None = None,
     biomechanics: dict | None = None,
+    risk_status: str | None = None,
 ) -> dict:
     """Create a player frame snapshot document."""
     return {
@@ -174,6 +184,7 @@ def make_player_frame_doc(
         "frame_idx": frame_idx,
         "quality": quality,
         "biomechanics": biomechanics,
+        "risk_status": risk_status,
         "created_at": datetime.now(timezone.utc),
     }
 

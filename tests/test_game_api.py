@@ -51,8 +51,12 @@ class TestGameDocHelpers:
         assert doc["team_id"] == 0
         assert doc["jersey_color"] == "red"
         assert doc["injury_events"] == []
-        assert doc["final_quality"] is None
         assert doc["analysis_summary"] is None
+        assert doc["risk_status"] is None
+        assert doc["risk_history"] == []
+        assert doc["workload"] is None
+        assert doc["pull_recommended"] is False
+        assert doc["pull_reasons"] == []
 
     def test_make_game_player_doc_defaults(self):
         """make_game_player_doc() handles default values."""

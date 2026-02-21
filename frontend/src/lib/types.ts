@@ -439,6 +439,64 @@ export interface TrendData {
   injury_counts: number[];
 }
 
+// ---------------------------------------------------------------------------
+// Player risk types (basketball game analysis)
+// ---------------------------------------------------------------------------
+
+/** Player risk level from the risk engine. */
+export type PlayerRiskLevel = "GREEN" | "YELLOW" | "RED";
+
+/** Consolidated injury event from the risk engine. */
+export interface PlayerInjuryEvent {
+  joint: string;
+  risk_type: string;
+  severity: "medium" | "high";
+  onset_frame: number;
+  onset_time: number;
+  duration_frames: number;
+  duration_sec: number;
+  max_value: number;
+  active: boolean;
+}
+
+/** Cumulative workload tracking for a player. */
+export interface PlayerWorkload {
+  total_frames: number;
+  active_frames: number;
+  high_effort_frames: number;
+  high_effort_pct: number;
+  activity_distribution: Record<string, number>;
+}
+
+/** Full risk summary for a game player. */
+export interface PlayerRiskSummary {
+  risk_status: PlayerRiskLevel;
+  injury_events: PlayerInjuryEvent[];
+  workload: PlayerWorkload;
+  risk_history: Array<{
+    time: number;
+    frame: number;
+    status: PlayerRiskLevel;
+    fatigue: number | null;
+    form: number | null;
+  }>;
+  pull_recommended: boolean;
+  pull_reasons: string[];
+}
+
+/** Game player from GET /api/games/:id/players. */
+export interface GamePlayer {
+  subject_id: number;
+  jersey_number: number | null;
+  team_id: number | null;
+  jersey_color: string | null;
+  injury_events: PlayerInjuryEvent[];
+  analysis_summary: Record<string, unknown> | null;
+  risk_status: PlayerRiskLevel | null;
+  pull_recommended: boolean;
+  workload: PlayerWorkload | null;
+}
+
 /** Injury event from history endpoint. */
 export interface InjuryEvent {
   workout_id: string;

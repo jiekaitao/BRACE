@@ -622,8 +622,10 @@ async def get_game_players(game_id: str):
             "team_id": doc.get("team_id"),
             "jersey_color": doc.get("jersey_color"),
             "injury_events": doc.get("injury_events", []),
-            "final_quality": doc.get("final_quality"),
             "analysis_summary": doc.get("analysis_summary"),
+            "risk_status": doc.get("risk_status"),
+            "pull_recommended": doc.get("pull_recommended", False),
+            "workload": doc.get("workload"),
         })
 
     return {"game_id": game_id, "players": players}
@@ -671,8 +673,12 @@ async def get_game_player(game_id: str, subject_id: int):
         "team_id": player.get("team_id"),
         "jersey_color": player.get("jersey_color"),
         "injury_events": player.get("injury_events", []),
-        "final_quality": player.get("final_quality"),
         "analysis_summary": player.get("analysis_summary"),
+        "risk_status": player.get("risk_status"),
+        "risk_history": player.get("risk_history", []),
+        "workload": player.get("workload"),
+        "pull_recommended": player.get("pull_recommended", False),
+        "pull_reasons": player.get("pull_reasons", []),
         "timeline": timeline,
     }
 
