@@ -14,7 +14,7 @@ cd "$SCRIPT_DIR"
 
 VENV=".venv"
 PORT="${PORT:-8001}"
-YOLO_MODEL="${YOLO_MODEL:-yolo11n-pose.pt}"
+YOLO_MODEL="${YOLO_MODEL:-yolo11m-pose.pt}"
 PIPELINE="${PIPELINE_BACKEND:-legacy}"
 
 # Parse arguments
@@ -23,8 +23,8 @@ for arg in "$@"; do
         --setup)
             echo "[setup] Creating virtual environment..."
             python3 -m venv "$VENV"
-            echo "[setup] Installing PyTorch (CPU)..."
-            "$VENV/bin/pip" install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+            echo "[setup] Installing PyTorch with MPS support..."
+            "$VENV/bin/pip" install torch torchvision
             echo "[setup] Installing brace package..."
             "$VENV/bin/pip" install -e .
             echo "[setup] Installing backend dependencies..."

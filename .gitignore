@@ -63,5 +63,9 @@ experiments/*.json
 # Backend uploads
 backend/uploads/
 
+# Native run artifacts
+.pids/
+.logs/
+
 # Documentation swap files
 documentation/.*.swp
