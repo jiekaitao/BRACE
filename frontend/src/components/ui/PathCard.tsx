@@ -1,6 +1,6 @@
 "use client";
 
-import { HTMLAttributes } from "react";
+import { HTMLAttributes, useState } from "react";
 
 interface PathCardProps extends HTMLAttributes<HTMLDivElement> {
   image?: string;
@@ -17,6 +17,8 @@ export default function PathCard({
   className = "",
   ...props
 }: PathCardProps) {
+  const [imageLoaded, setImageLoaded] = useState(false);
+
   return (
     <div
       onClick={onClick}
@@ -32,12 +34,18 @@ export default function PathCard({
       `.trim()}
       {...props}
     >
-      {/* Background image with grayscale -> color transition */}
+      {/* Background image with fade-in on load + grayscale -> color on hover */}
       {image && (
-        <div
-          className="absolute inset-0 bg-cover bg-center transition-all duration-400 ease-out
-            grayscale group-hover:grayscale-0"
-          style={{ backgroundImage: `url(${image})` }}
+        <img
+          src={image}
+          alt=""
+          onLoad={() => setImageLoaded(true)}
+          className={`
+            absolute inset-0 w-full h-full object-cover scale-[1.02]
+            transition-all duration-600 ease-out
+            grayscale brightness-80 blur-[0.5px] group-hover:grayscale-0
+            ${imageLoaded ? "opacity-100" : "opacity-0"}
+          `}
         />
       )}
 

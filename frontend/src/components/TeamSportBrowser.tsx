@@ -1,9 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SPORTS } from "@/lib/teamSportsData";
 import VideoButton from "@/components/ui/VideoButton";
+
+const SPORT_ICONS: Record<string, React.ReactNode> = {
+  basketball: (
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="32" cy="32" r="28" />
+      <path d="M32 4v56" />
+      <path d="M4 32h56" />
+      <path d="M8.5 12C18 20 18 44 8.5 52" />
+      <path d="M55.5 12C46 20 46 44 55.5 52" />
+      <path d="M12 8.5C20 18 44 18 52 8.5" />
+      <path d="M12 55.5C20 46 44 46 52 55.5" />
+    </svg>
+  ),
+  football: (
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <ellipse cx="32" cy="32" rx="28" ry="16" transform="rotate(-30 32 32)" />
+      <path d="M18 46L46 18" />
+      <path d="M24 28l4 4" />
+      <path d="M28 24l4 4" />
+      <path d="M32 20l4 4" />
+      <path d="M36 16l4 4" />
+      <path d="M10 42c-2-6-2-12 0-18" />
+      <path d="M54 42c2-6 2-12 0-18" />
+    </svg>
+  ),
+  soccer: (
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="32" cy="32" r="28" />
+      <polygon points="32,14 40,20 38,30 26,30 24,20" />
+      <line x1="32" y1="4" x2="32" y2="14" />
+      <line x1="40" y1="20" x2="56" y2="14" />
+      <line x1="38" y1="30" x2="54" y2="40" />
+      <line x1="26" y1="30" x2="10" y2="40" />
+      <line x1="24" y1="20" x2="8" y2="14" />
+      <line x1="32" y1="60" x2="32" y2="48" />
+      <line x1="10" y1="40" x2="16" y2="48" />
+      <line x1="54" y1="40" x2="48" y2="48" />
+      <line x1="16" y1="48" x2="32" y2="48" />
+      <line x1="48" y1="48" x2="32" y2="48" />
+    </svg>
+  ),
+};
 
 interface TeamSportBrowserProps {
   onClose: () => void;
@@ -12,6 +54,21 @@ interface TeamSportBrowserProps {
 
 export default function TeamSportBrowser({ onClose, showContent }: TeamSportBrowserProps) {
   const [selectedSport, setSelectedSport] = useState<string | null>(null);
+
+  // Escape key: go back to sport list if a sport is selected, otherwise close
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (selectedSport) {
+          setSelectedSport(null);
+        } else {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedSport, onClose]);
 
   const sport = SPORTS.find((s) => s.id === selectedSport);
 
@@ -22,12 +79,12 @@ export default function TeamSportBrowser({ onClose, showContent }: TeamSportBrow
       className="flex flex-col h-full"
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-[#222]">
         <div className="flex items-center gap-3">
           {selectedSport && (
             <button
               onClick={() => setSelectedSport(null)}
-              className="w-9 h-9 flex items-center justify-center rounded-full bg-white/20 border-2 border-white/30 text-white font-bold text-lg cursor-pointer hover:bg-white/30 transition-colors"
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-[#1A1A1A] border border-[#333] text-white/60 font-bold text-lg cursor-pointer hover:bg-[#2A2A2A] transition-colors"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 12H5" />
@@ -36,19 +93,19 @@ export default function TeamSportBrowser({ onClose, showContent }: TeamSportBrow
             </button>
           )}
           <h2 className="text-xl font-extrabold text-white m-0">
-            {sport ? sport.name : "Team Performance Monitor"}
+            {sport ? sport.name : "Choose a Sport"}
           </h2>
         </div>
         <button
           onClick={onClose}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-[#F7F7F7] border-2 border-[#E5E5E5] text-[#777777] font-bold text-lg cursor-pointer hover:bg-[#E5E5E5] transition-colors"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-[#1A1A1A] border border-[#333] text-white/60 font-bold text-lg cursor-pointer hover:bg-[#2A2A2A] transition-colors"
         >
           &times;
         </button>
       </div>
 
       {/* Content */}
-      <div className="flex-1 px-6 pb-6 overflow-y-auto">
+      <div className="flex-1 px-6 py-5 overflow-y-auto">
         <AnimatePresence mode="wait">
           {!selectedSport ? (
             <motion.div
@@ -63,20 +120,14 @@ export default function TeamSportBrowser({ onClose, showContent }: TeamSportBrow
                 <button
                   key={s.id}
                   onClick={() => setSelectedSport(s.id)}
-                  className="group relative overflow-hidden rounded-[16px] border-2 border-white/20 cursor-pointer aspect-[4/3] hover:border-white/50 hover:scale-[1.03] active:scale-[0.98] transition-all duration-200"
+                  className="group relative overflow-hidden rounded-[16px] border border-[#333] bg-[#111] cursor-pointer aspect-[4/3] shadow-[0_4px_0_#222] hover:border-white/40 hover:shadow-[0_4px_0_#444] active:shadow-none active:translate-y-[4px] transition-all duration-100 flex flex-col items-center justify-center gap-3"
                 >
-                  <img
-                    src={s.image}
-                    alt={s.name}
-                    className="absolute inset-0 w-full h-full object-cover"
-                    loading="lazy"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 p-3">
-                    <span className="text-white font-extrabold text-sm sm:text-base">
-                      {s.name}
-                    </span>
+                  <div className="opacity-40 group-hover:opacity-80 transition-opacity duration-200">
+                    {SPORT_ICONS[s.id]}
                   </div>
+                  <span className="text-white font-extrabold text-sm">
+                    {s.name}
+                  </span>
                 </button>
               ))}
             </motion.div>

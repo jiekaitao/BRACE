@@ -69,7 +69,7 @@ def make_base_pattern(pattern_id, seg_len=30):
 def make_segment_variable_length(rng, base_pattern, noise_std, len_variation):
     """Create a segment with variable length (simulating boundary instability).
 
-    The key insight: resampling a 22-frame segment vs a 30-frame segment of the
+    Resampling a 22-frame segment vs a 30-frame segment of the
     same motion to the same RESAMPLE_LEN produces different trajectories because
     the phase alignment differs. This is what causes cluster splitting.
     """

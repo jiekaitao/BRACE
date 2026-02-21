@@ -41,7 +41,7 @@ The `run.sh` script auto-detects which profile to use based on the OS and GPU av
 
 **Docker services**: Frontend (3000), Backend (8001→8000), MongoDB (27017, internal), VectorAI (5555→50051, optional).
 
-**Hot-reload in production compose**: These files are bind-mounted and take effect on `docker compose restart backend` (or `backend-cpu` on Mac): `main.py`, `streaming_analyzer.py`, `subject_manager.py`, `gemini_classifier.py`, `tensorrt_utils.py`, `identity_resolver.py`, `multi_person_tracker.py`, `botsort_tracker.py`, `movement_quality.py`, `movement_guidelines.py`, `motion_segments.py`, `risk_profile.py`, `chat_agent.py`, `voice_alerts.py`, `vectorai_store.py`, `vector_activity_classifier.py`, `vector_movement_search.py`. All other backend changes require rebuilding the backend image. New files require adding a bind-mount in `docker-compose.yml` and running `docker compose up -d backend` (recreate, not just restart).
+**Hot-reload in production compose**: These files are bind-mounted and take effect on `docker compose restart backend` (or `backend-cpu` on Mac): `main.py`, `streaming_analyzer.py`, `subject_manager.py`, `gemini_classifier.py`, `tensorrt_utils.py`, `identity_resolver.py`, `multi_person_tracker.py`, `botsort_tracker.py`, `movement_quality.py`, `movement_guidelines.py`, `motion_segments.py`, `risk_profile.py`, `chat_agent.py`, `voice_alerts.py`, `vectorai_store.py`, `vector_movement_search.py`. All other backend changes require rebuilding the backend image. New files require adding a bind-mount in `docker-compose.yml` and running `docker compose up -d backend` (recreate, not just restart).
 
 **Dev mode** (`docker-compose.dev.yml`): Volume-mounts entire `backend/` and `brace/` directories with `uvicorn --reload` for automatic Python hot-reload.
 
@@ -203,7 +203,6 @@ Real-time injury risk alerts via ElevenLabs TTS. `VoiceAlertGenerator` (`voice_a
 - `backend/risk_profile.py` — `RiskModifiers` dataclass, per-injury threshold scaling (FPPA, hip drop, trunk lean, asymmetry, angular velocity), `apply_modifiers()` for personalization
 - `backend/voice_alerts.py` — `VoiceAlertGenerator` with cooldown/dedup for real-time injury risk alerts
 - `backend/vector_movement_search.py` — `MovementSearchEngine` for semantic cross-session motion similarity via VectorAI
-- `backend/vector_activity_classifier.py` — `VectorActivityClassifier` for template-based activity classification (falls back to Gemini)
 - `backend/tts_elevenlabs.py` — ElevenLabs TTS integration
 - `backend/vectorai_store.py` — VectorAI gRPC integration for semantic movement search (optional, graceful degradation)
 - `brace/core/motion_segments.py` — SRP normalization, velocity segmentation, agglomerative clustering, consistency

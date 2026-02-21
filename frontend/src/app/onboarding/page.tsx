@@ -12,14 +12,14 @@ import DuoButton from "@/components/ui/DuoButton";
 import DemoVideoModal from "@/components/DemoVideoModal";
 
 const PERSONAL_STEPS = [
-  { title: "Welcome", subtitle: "Sign in or create an account" },
+  { title: "Welcome to BRACE", subtitle: "Sign in or create an account to get started" },
   { title: "Injury History", subtitle: "Tell us about any past injuries" },
   { title: "Your Profile", subtitle: "Review your injury profile" },
   { title: "Get Started", subtitle: "Choose how to analyze your movement" },
 ];
 
 const TEAM_STEPS = [
-  { title: "Welcome", subtitle: "Sign in or create an account" },
+  { title: "Welcome to BRACE", subtitle: "Sign in or create an account to get started" },
   { title: "Get Started", subtitle: "Choose how to monitor your team" },
 ];
 

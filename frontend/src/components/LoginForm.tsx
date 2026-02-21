@@ -35,12 +35,6 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
   return (
     <Card className="max-w-sm mx-auto">
       <div className="flex flex-col gap-4">
-        <h2 className="text-xl font-extrabold text-[#3C3C3C] text-center">
-          Welcome to BRACE
-        </h2>
-        <p className="text-sm text-[#777777] text-center">
-          Enter a username to get started
-        </p>
         <input
           type="text"
           value={username}
@@ -49,7 +43,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
             setUsername(val);
           }}
           onKeyDown={(e) => e.key === "Enter" && handleContinue()}
-          placeholder="Letters only (a-z)"
+          placeholder="Enter a username (a-z)"
           className="w-full px-4 py-3 text-base border-2 border-[#E5E5E5] rounded-[12px] outline-none focus:border-[#1CB0F6] transition-colors"
           disabled={loading}
           autoFocus
