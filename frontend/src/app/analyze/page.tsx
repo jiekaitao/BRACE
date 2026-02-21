@@ -273,7 +273,7 @@ function AnalyzeContent() {
     <div className="min-h-screen flex flex-col bg-[#F7F7F7]">
       {/* Top bar */}
       <header className="flex items-center justify-between px-5 py-3 bg-white border-b-2 border-[#E5E5E5]">
-        <Link href="/" className="text-base font-bold text-[#3C3C3C] no-underline">
+        <Link href="/dashboard" className="text-base font-bold text-[#3C3C3C] no-underline">
           BRACE
         </Link>
         <div className="flex items-center gap-2">

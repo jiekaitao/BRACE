@@ -102,7 +102,7 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col items-center px-5 py-12">
       {/* Hero */}
       <div className="scale-in text-center mb-8 max-w-lg">
-        <p className="text-base text-[#777777] leading-[1.5]">
+        <p className="text-4xl font-bold text-[#3C3C3C] leading-[1.3]">
           Real-time AI-powered movement analysis to keep you safe.
         </p>
       </div>

@@ -4,6 +4,7 @@ import { Fragment, useState, useCallback, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useChat } from "@/hooks/useChat";
+import { updateProfile } from "@/lib/auth";
 import LoginForm from "@/components/LoginForm";
 import ChatPanel from "@/components/ChatPanel";
 import InjuryProfileCard from "@/components/InjuryProfileCard";
@@ -31,7 +32,7 @@ function OnboardingContent() {
   const isTeam = path === "team";
   const STEPS = isTeam ? TEAM_STEPS : PERSONAL_STEPS;
 
-  const { user, loading } = useAuth();
+  const { user, loading, refreshUser } = useAuth();
 
   // Redirect already-onboarded users unless in edit mode
   useEffect(() => {
@@ -75,29 +76,40 @@ function OnboardingContent() {
 
   const handleConfirmProfile = useCallback(async () => {
     await confirmProfile(user?.user_id);
+    await refreshUser();
     setProfileConfirmed(true);
     next();
-  }, [confirmProfile, user, next]);
+  }, [confirmProfile, user, next, refreshUser]);
 
   const handleEditProfile = useCallback(() => {
     setStep(1);
   }, []);
 
   const handleModeSelect = useCallback(
-    (mode: string, video?: string) => {
+    async (mode: string, video?: string) => {
+      // If user skipped chat / has no profile yet, save an empty one so
+      // they're marked as onboarded and won't repeat the flow.
+      if (user && !user.injury_profile && !profileConfirmed) {
+        try {
+          await updateProfile({ injury_profile: { injuries: [] } });
+          await refreshUser();
+        } catch {
+          // best-effort — don't block navigation
+        }
+      }
       if (video) {
         router.push(`/analyze?mode=demo&video=${encodeURIComponent(video)}`);
       } else {
         router.push(`/analyze?mode=${mode}`);
       }
     },
-    [router],
+    [router, user, profileConfirmed, refreshUser],
   );
 
   const handleDemoSelect = useCallback(
-    (filename: string) => {
+    async (filename: string) => {
       setShowDemoModal(false);
-      handleModeSelect("demo", filename);
+      await handleModeSelect("demo", filename);
     },
     [handleModeSelect],
   );
