@@ -230,57 +230,6 @@ Transform:
   - {fileID: 498099676}
   m_Father: {fileID: 859952594}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &283725544
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 283725546}
-  - component: {fileID: 283725545}
-  m_Layer: 0
-  m_Name: Cube Spawner
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &283725545
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 283725544}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8c39c10a0a5224da196a63bbdc751b78, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CubeSpawner
-  minZ: 1.5
-  maxZ: 4
-  spreadX: 3
-  spreadY: 2
-  cubeScale: 0.3
-  cubeMaterial: {fileID: 2100000, guid: 12f8c9067341e48eeb380c2641eed72d, type: 2}
-  cubeHighlightMaterial: {fileID: 2100000, guid: 3b996ca1c17ea4431ab657b6239785cd, type: 2}
---- !u!4 &283725546
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 283725544}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0, y: 0, z: -0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -587,8 +536,93 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8e4aacf12aac746908bbc63a063a7979, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InfoPanel
+  braceWs: {fileID: 649485639}
   displayDistance: 1.5
-  fontSize: 36
+  titleFontSize: 40
+  bodyFontSize: 28
+--- !u!1 &649485637
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 649485641}
+  - component: {fileID: 649485640}
+  - component: {fileID: 649485639}
+  - component: {fileID: 649485638}
+  m_Layer: 0
+  m_Name: BraceManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &649485638
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 649485637}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ba4cb6b3e37224ac0b870f6bb404fc64, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BoundingBoxRenderer
+  braceWs: {fileID: 649485639}
+  assumedDepth: 3
+  lineWidth: 0.005
+  unselectedColor: {r: 0.6, g: 0.6, b: 0.6, a: 0.9}
+  selectedColor: {r: 0.345, g: 0.8, b: 0.008, a: 1}
+  calibratingColor: {r: 1, g: 0.84, b: 0, a: 0.7}
+  smoothAlpha: 0.3
+--- !u!114 &649485639
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 649485637}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 806bcecfe0046408a97c87ce031cda9c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BraceWebSocket
+  serverUrl: ws://192.168.1.100:8001/ws/analyze?mode=webcam&client=vr
+  maxFps: 30
+  maxInFlight: 5
+--- !u!114 &649485640
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 649485637}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ff386ecd759bb4af1bf63af28bb5b28c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FrameCapture
+  braceWs: {fileID: 0}
+  targetHeight: 480
+  jpegQuality: 65
+--- !u!4 &649485641
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 649485637}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0, y: -0, z: -0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &773190229 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1054112583220142, guid: 126d619cf4daa52469682f85c1378b4a, type: 3}
@@ -606,10 +640,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 723b006c76e3040d9bebde43910ed4e0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ControllerRaycast
-  maxRayLength: 10
+  braceWs: {fileID: 649485639}
+  maxRayLength: 20
   beamWidth: 0.005
   beamColor: {r: 0.5, g: 1, b: 1, a: 0.8}
   beamHitColor: {r: 1, g: 1, b: 1, a: 1}
+  hoverLineWidth: 0.01
+  normalLineWidth: 0.005
 --- !u!120 &773190232
 LineRenderer:
   serializedVersion: 3
@@ -1600,5 +1637,5 @@ SceneRoots:
   - {fileID: 832575519}
   - {fileID: 859952592}
   - {fileID: 1592057506}
-  - {fileID: 283725546}
   - {fileID: 46297437}
+  - {fileID: 649485641}
