@@ -127,11 +127,15 @@ class TestEnsureIndexes:
         mock_users = AsyncMock()
         mock_chat = AsyncMock()
         mock_workouts = AsyncMock()
-        mock_db.__getitem__ = lambda self, name: {
+        _collections = {
             "users": mock_users,
             "chat_sessions": mock_chat,
             "workout_summaries": mock_workouts,
-        }[name]
+            "games": AsyncMock(),
+            "game_players": AsyncMock(),
+            "player_frames": AsyncMock(),
+        }
+        mock_db.__getitem__ = lambda self, name: _collections[name]
         with patch.object(db_mod, "get_db", return_value=mock_db):
             await db_mod.ensure_indexes()
             # Check users got a unique index on username
@@ -148,11 +152,15 @@ class TestEnsureIndexes:
         mock_users = AsyncMock()
         mock_chat = AsyncMock()
         mock_workouts = AsyncMock()
-        mock_db.__getitem__ = lambda self, name: {
+        _collections = {
             "users": mock_users,
             "chat_sessions": mock_chat,
             "workout_summaries": mock_workouts,
-        }[name]
+            "games": AsyncMock(),
+            "game_players": AsyncMock(),
+            "player_frames": AsyncMock(),
+        }
+        mock_db.__getitem__ = lambda self, name: _collections[name]
         with patch.object(db_mod, "get_db", return_value=mock_db):
             await db_mod.ensure_indexes()
             mock_chat.create_index.assert_called_once()
@@ -167,11 +175,15 @@ class TestEnsureIndexes:
         mock_users = AsyncMock()
         mock_chat = AsyncMock()
         mock_workouts = AsyncMock()
-        mock_db.__getitem__ = lambda self, name: {
+        _collections = {
             "users": mock_users,
             "chat_sessions": mock_chat,
             "workout_summaries": mock_workouts,
-        }[name]
+            "games": AsyncMock(),
+            "game_players": AsyncMock(),
+            "player_frames": AsyncMock(),
+        }
+        mock_db.__getitem__ = lambda self, name: _collections[name]
         with patch.object(db_mod, "get_db", return_value=mock_db):
             await db_mod.ensure_indexes()
             mock_workouts.create_index.assert_called_once()

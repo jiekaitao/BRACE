@@ -70,6 +70,12 @@ except ImportError:
     _VECTORAI_SDK_AVAILABLE = False
 
 try:
+    from basketball_processor import process_basketball_game
+    _BASKETBALL_AVAILABLE = True
+except ImportError:
+    _BASKETBALL_AVAILABLE = False
+
+try:
     import pynvml
     pynvml.nvmlInit()
     _nvml_available = True
@@ -108,6 +114,10 @@ _clip_reid_extractor: EmbeddingExtractor | None = None
 
 # Store uploaded video paths by session ID
 _uploads: dict[str, Path] = {}
+
+# Game processing state
+_game_tasks: dict[str, asyncio.Task] = {}
+_game_ws_connections: dict[str, list[WebSocket]] = {}
 
 DISABLE_REID = os.environ.get("DISABLE_REID", "0") == "1"
 PIPELINE_BACKEND = os.environ.get("PIPELINE_BACKEND", "legacy")
@@ -447,6 +457,244 @@ async def seed_activity_templates(request: dict):
         return {"seeded": len(labeled)}
     except Exception as e:
         return {"error": str(e), "seeded": 0}
+
+
+# ---------------------------------------------------------------------------
+# Basketball game analysis endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/games")
+async def create_game(session_id: str):
+    """Submit a video for basketball game analysis.
+
+    Takes a session_id from a previous POST /api/upload.
+    Returns game_id and starts background processing.
+    """
+    if not _BASKETBALL_AVAILABLE:
+        return Response(
+            content=json.dumps({"error": "Basketball processing not available"}),
+            status_code=501,
+            media_type="application/json",
+        )
+
+    video_path = _uploads.get(session_id)
+    if not video_path or not video_path.exists():
+        return Response(
+            content=json.dumps({"error": "Video not found. Upload first via POST /api/upload."}),
+            status_code=404,
+            media_type="application/json",
+        )
+
+    if pipeline is None:
+        return Response(
+            content=json.dumps({"error": "Models not loaded yet"}),
+            status_code=503,
+            media_type="application/json",
+        )
+
+    # Check if there's already a game processing (MVP: 1 concurrent game)
+    active_games = [gid for gid, task in _game_tasks.items() if not task.done()]
+    if active_games:
+        return Response(
+            content=json.dumps({"error": "A game is already being processed. Wait for it to finish."}),
+            status_code=429,
+            media_type="application/json",
+        )
+
+    try:
+        from db import get_collection, make_game_doc
+    except ImportError:
+        return Response(
+            content=json.dumps({"error": "Database not available"}),
+            status_code=503,
+            media_type="application/json",
+        )
+
+    games_col = get_collection("games")
+    doc = make_game_doc(session_id, str(video_path))
+    result = await games_col.insert_one(doc)
+    game_id = str(result.inserted_id)
+
+    # Build progress callback for WebSocket broadcast
+    async def _broadcast_progress(msg: dict):
+        connections = _game_ws_connections.get(game_id, [])
+        dead = []
+        for ws in connections:
+            try:
+                await ws.send_json(msg)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            connections.remove(ws)
+
+    # Prepare re-ID extractors
+    reid = _reid_extractor if (not DISABLE_REID and not isinstance(_reid_extractor, DummyExtractor)) else None
+    clip_reid = _clip_reid_extractor if not DISABLE_REID else None
+
+    # Start background processing
+    task = asyncio.create_task(
+        process_basketball_game(
+            game_id=game_id,
+            video_path=video_path,
+            backend=pipeline,
+            reid_extractor=reid,
+            cross_cut_extractor=clip_reid,
+            progress_callback=_broadcast_progress,
+        )
+    )
+    _game_tasks[game_id] = task
+
+    return {"game_id": game_id, "status": "queued"}
+
+
+@app.get("/api/games/{game_id}")
+async def get_game(game_id: str):
+    """Get game status, progress, player count, and team colors."""
+    try:
+        from db import get_collection
+        from bson import ObjectId
+    except ImportError:
+        return Response(
+            content=json.dumps({"error": "Database not available"}),
+            status_code=503,
+            media_type="application/json",
+        )
+
+    games_col = get_collection("games")
+    try:
+        doc = await games_col.find_one({"_id": ObjectId(game_id)})
+    except Exception:
+        doc = None
+
+    if not doc:
+        return Response(
+            content=json.dumps({"error": "Game not found"}),
+            status_code=404,
+            media_type="application/json",
+        )
+
+    return {
+        "game_id": game_id,
+        "status": doc.get("status"),
+        "progress": doc.get("progress", 0.0),
+        "frame_idx": doc.get("frame_idx", 0),
+        "total_frames": doc.get("total_frames", 0),
+        "player_count": doc.get("player_count", 0),
+        "team_colors": doc.get("team_colors", []),
+        "duration_sec": doc.get("duration_sec", 0.0),
+        "error": doc.get("error"),
+        "created_at": str(doc.get("created_at", "")),
+    }
+
+
+@app.get("/api/games/{game_id}/players")
+async def get_game_players(game_id: str):
+    """Get all players for a game with jersey info, team, injury events, quality."""
+    try:
+        from db import get_collection
+    except ImportError:
+        return Response(
+            content=json.dumps({"error": "Database not available"}),
+            status_code=503,
+            media_type="application/json",
+        )
+
+    players_col = get_collection("game_players")
+    cursor = players_col.find({"game_id": game_id})
+    players = []
+    async for doc in cursor:
+        players.append({
+            "subject_id": doc.get("subject_id"),
+            "jersey_number": doc.get("jersey_number"),
+            "team_id": doc.get("team_id"),
+            "jersey_color": doc.get("jersey_color"),
+            "injury_events": doc.get("injury_events", []),
+            "final_quality": doc.get("final_quality"),
+            "analysis_summary": doc.get("analysis_summary"),
+        })
+
+    return {"game_id": game_id, "players": players}
+
+
+@app.get("/api/games/{game_id}/players/{subject_id}")
+async def get_game_player(game_id: str, subject_id: int):
+    """Get detailed data for a single player including biomechanics timeline."""
+    try:
+        from db import get_collection
+    except ImportError:
+        return Response(
+            content=json.dumps({"error": "Database not available"}),
+            status_code=503,
+            media_type="application/json",
+        )
+
+    players_col = get_collection("game_players")
+    player = await players_col.find_one({"game_id": game_id, "subject_id": subject_id})
+    if not player:
+        return Response(
+            content=json.dumps({"error": "Player not found"}),
+            status_code=404,
+            media_type="application/json",
+        )
+
+    # Fetch timeline from player_frames
+    frames_col = get_collection("player_frames")
+    cursor = frames_col.find(
+        {"game_id": game_id, "subject_id": subject_id},
+    ).sort("frame_idx", 1)
+
+    timeline = []
+    async for doc in cursor:
+        timeline.append({
+            "frame_idx": doc.get("frame_idx"),
+            "quality": doc.get("quality"),
+            "biomechanics": doc.get("biomechanics"),
+        })
+
+    return {
+        "game_id": game_id,
+        "subject_id": subject_id,
+        "jersey_number": player.get("jersey_number"),
+        "team_id": player.get("team_id"),
+        "jersey_color": player.get("jersey_color"),
+        "injury_events": player.get("injury_events", []),
+        "final_quality": player.get("final_quality"),
+        "analysis_summary": player.get("analysis_summary"),
+        "timeline": timeline,
+    }
+
+
+@app.websocket("/ws/games/{game_id}")
+async def ws_game_progress(websocket: WebSocket, game_id: str):
+    """WebSocket endpoint for live game processing progress updates."""
+    await websocket.accept()
+
+    if game_id not in _game_ws_connections:
+        _game_ws_connections[game_id] = []
+    _game_ws_connections[game_id].append(websocket)
+
+    try:
+        # Keep connection alive until client disconnects or game completes
+        while True:
+            # Wait for client messages (ping/pong or disconnect)
+            try:
+                msg = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+            except asyncio.TimeoutError:
+                # Send keepalive
+                task = _game_tasks.get(game_id)
+                if task is not None and task.done():
+                    await websocket.send_json({"type": "game_done", "game_id": game_id})
+                    break
+                continue
+            except WebSocketDisconnect:
+                break
+    finally:
+        connections = _game_ws_connections.get(game_id, [])
+        if websocket in connections:
+            connections.remove(websocket)
+        if not connections and game_id in _game_ws_connections:
+            del _game_ws_connections[game_id]
 
 
 def _gpu_decode_jpeg(jpeg_bytes: bytes) -> np.ndarray:

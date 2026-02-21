@@ -133,12 +133,14 @@ class GeminiActivityClassifier:
         self,
         frames: list[np.ndarray],
         bbox: tuple[float, float, float, float],
+        prompt: str | None = None,
     ) -> str:
         """Classify the activity of a person across representative frames.
 
         Args:
             frames: 3-5 representative RGB frames (full resolution).
             bbox: Normalized bounding box (x1, y1, x2, y2) in [0, 1].
+            prompt: Optional custom prompt. Defaults to _CLASSIFY_PROMPT.
 
         Returns:
             A single-word/short-phrase activity label, or "unknown" on failure.
@@ -179,7 +181,7 @@ class GeminiActivityClassifier:
                 jpeg_bytes = _encode_frame_jpeg(crop)
                 img = Image.open(io.BytesIO(jpeg_bytes))
                 contents.append(img)
-            contents.append(_CLASSIFY_PROMPT)
+            contents.append(prompt or _CLASSIFY_PROMPT)
 
             response = self._model.models.generate_content(
                 model="gemini-2.5-pro",

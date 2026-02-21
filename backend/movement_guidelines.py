@@ -235,6 +235,122 @@ PLANK_PROFILE = MovementProfile(
     ],
 )
 
+# --- Basketball profiles (sport-specific, ACL-focused) ---
+
+BASKETBALL_LANDING_PROFILE = MovementProfile(
+    name="basketball_landing",
+    display_name="Basketball Landing",
+    keywords=["dunk", "dunking", "block", "blocking", "rebound", "rebounding",
+              "alley-oop", "alley oop", "slam dunk"],
+    thresholds=[
+        # Tightest FPPA for ACL risk on landing (Hewett 2005 landing biomechanics)
+        RiskThreshold("fppa", 8.0, 15.0, "left_knee", "acl_valgus"),
+        RiskThreshold("fppa", 8.0, 15.0, "right_knee", "acl_valgus"),
+        RiskThreshold("hip_drop", 8.0, 12.0, "pelvis", "hip_drop"),
+        RiskThreshold("trunk_lean", 15.0, 25.0, "trunk", "trunk_lean"),
+        RiskThreshold("asymmetry", 15.0, 25.0, "bilateral", "asymmetry"),
+        RiskThreshold("angular_velocity", 600.0, 600.0, "left_knee", "angular_velocity_spike"),
+        RiskThreshold("angular_velocity", 600.0, 600.0, "right_knee", "angular_velocity_spike"),
+    ],
+    form_cues=[
+        "Land on both feet with knees bent",
+        "Avoid single-leg stiff landing",
+        "Keep knees tracking over toes on impact",
+        "Absorb through hips and ankles",
+    ],
+)
+
+BASKETBALL_CUTTING_PROFILE = MovementProfile(
+    name="basketball_cutting",
+    display_name="Basketball Cutting",
+    keywords=["crossover", "euro step", "eurostep", "direction change",
+              "cutting", "juke", "ankle breaker"],
+    thresholds=[
+        # Tight FPPA for plant-leg ACL risk on direction changes
+        RiskThreshold("fppa", 10.0, 16.0, "left_knee", "acl_valgus"),
+        RiskThreshold("fppa", 10.0, 16.0, "right_knee", "acl_valgus"),
+        RiskThreshold("hip_drop", 8.0, 12.0, "pelvis", "hip_drop"),
+        RiskThreshold("trunk_lean", 18.0, 28.0, "trunk", "trunk_lean"),
+        RiskThreshold("asymmetry", 20.0, 30.0, "bilateral", "asymmetry", enabled=False),
+        RiskThreshold("angular_velocity", 550.0, 550.0, "left_knee", "angular_velocity_spike"),
+        RiskThreshold("angular_velocity", 550.0, 550.0, "right_knee", "angular_velocity_spike"),
+    ],
+    form_cues=[
+        "Decelerate before cutting",
+        "Plant foot firmly, knee over toe",
+        "Keep center of mass low",
+        "Avoid excessive knee valgus on plant leg",
+    ],
+)
+
+BASKETBALL_SHOOTING_PROFILE = MovementProfile(
+    name="basketball_shooting",
+    display_name="Basketball Shooting",
+    keywords=["shooting", "jump shot", "free throw", "layup", "lay-up",
+              "three pointer", "mid-range", "floater", "hook shot"],
+    thresholds=[
+        # Moderate thresholds — asymmetry expected (dominant hand side)
+        RiskThreshold("fppa", 12.0, 20.0, "left_knee", "acl_valgus"),
+        RiskThreshold("fppa", 12.0, 20.0, "right_knee", "acl_valgus"),
+        RiskThreshold("hip_drop", 10.0, 15.0, "pelvis", "hip_drop"),
+        RiskThreshold("trunk_lean", 20.0, 30.0, "trunk", "trunk_lean"),
+        RiskThreshold("asymmetry", 20.0, 30.0, "bilateral", "asymmetry", enabled=False),
+        RiskThreshold("angular_velocity", 500.0, 500.0, "left_knee", "angular_velocity_spike"),
+        RiskThreshold("angular_velocity", 500.0, 500.0, "right_knee", "angular_velocity_spike"),
+    ],
+    form_cues=[
+        "Align feet with basket on set shots",
+        "Bend knees for power on jump shots",
+        "Land balanced after release",
+        "Follow through with wrist",
+    ],
+)
+
+BASKETBALL_DRIBBLING_PROFILE = MovementProfile(
+    name="basketball_dribbling",
+    display_name="Basketball Dribbling",
+    keywords=["dribbling", "ball handling", "between the legs", "behind the back"],
+    thresholds=[
+        # Moderate thresholds for general ball handling
+        RiskThreshold("fppa", 12.0, 20.0, "left_knee", "acl_valgus"),
+        RiskThreshold("fppa", 12.0, 20.0, "right_knee", "acl_valgus"),
+        RiskThreshold("hip_drop", 8.0, 12.0, "pelvis", "hip_drop"),
+        RiskThreshold("trunk_lean", 18.0, 28.0, "trunk", "trunk_lean"),
+        RiskThreshold("asymmetry", 15.0, 25.0, "bilateral", "asymmetry"),
+        RiskThreshold("angular_velocity", 500.0, 500.0, "left_knee", "angular_velocity_spike"),
+        RiskThreshold("angular_velocity", 500.0, 500.0, "right_knee", "angular_velocity_spike"),
+    ],
+    form_cues=[
+        "Stay low with knees bent",
+        "Keep head up, eyes on court",
+        "Protect ball with off hand",
+        "Maintain athletic stance",
+    ],
+)
+
+BASKETBALL_DEFENSE_PROFILE = MovementProfile(
+    name="basketball_defense",
+    display_name="Basketball Defense",
+    keywords=["defensive slide", "guarding", "defensive stance", "on-ball defense",
+              "closeout", "close out", "defensive shuffle"],
+    thresholds=[
+        # Low angular velocity thresholds for controlled lateral movement
+        RiskThreshold("fppa", 12.0, 20.0, "left_knee", "acl_valgus"),
+        RiskThreshold("fppa", 12.0, 20.0, "right_knee", "acl_valgus"),
+        RiskThreshold("hip_drop", 8.0, 12.0, "pelvis", "hip_drop"),
+        RiskThreshold("trunk_lean", 15.0, 25.0, "trunk", "trunk_lean"),
+        RiskThreshold("asymmetry", 15.0, 25.0, "bilateral", "asymmetry"),
+        RiskThreshold("angular_velocity", 400.0, 400.0, "left_knee", "angular_velocity_spike"),
+        RiskThreshold("angular_velocity", 400.0, 400.0, "right_knee", "angular_velocity_spike"),
+    ],
+    form_cues=[
+        "Stay low in athletic stance",
+        "Slide feet, don't cross over",
+        "Keep hips square to opponent",
+        "Maintain active hands",
+    ],
+)
+
 
 # Ordered by specificity (more specific keywords first).
 # "walking" must be before "running" wouldn't matter since keywords don't overlap,
@@ -247,6 +363,13 @@ _PROFILES: list[MovementProfile] = [
     DEADLIFT_PROFILE,  # "romanian deadlift" before generic matches
     PUSH_UP_PROFILE,
     PLANK_PROFILE,
+    # Basketball profiles before generic "jump"/"running" so basketball-specific
+    # keywords like "dunking", "shooting", "defensive slide" match first.
+    BASKETBALL_LANDING_PROFILE,
+    BASKETBALL_CUTTING_PROFILE,
+    BASKETBALL_SHOOTING_PROFILE,
+    BASKETBALL_DRIBBLING_PROFILE,
+    BASKETBALL_DEFENSE_PROFILE,
     SQUAT_PROFILE,
     JUMP_PROFILE,
     RUNNING_PROFILE,

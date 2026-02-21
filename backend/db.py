@@ -69,6 +69,24 @@ async def ensure_indexes() -> None:
         ("created_at", -1),
     ])
 
+    # games: index on status and created_at for listing/filtering
+    await db["games"].create_index("status")
+    await db["games"].create_index("created_at")
+
+    # game_players: unique compound on (game_id, subject_id), index on (game_id, team_id)
+    await db["game_players"].create_index(
+        [("game_id", 1), ("subject_id", 1)], unique=True,
+    )
+    await db["game_players"].create_index([("game_id", 1), ("team_id", 1)])
+
+    # player_frames: compound on (game_id, subject_id, frame_idx), TTL 30 days
+    await db["player_frames"].create_index(
+        [("game_id", 1), ("subject_id", 1), ("frame_idx", 1)],
+    )
+    await db["player_frames"].create_index(
+        "created_at", expireAfterSeconds=30 * 24 * 3600,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Document helpers
@@ -93,6 +111,64 @@ def make_chat_session_doc(user_id: str) -> dict:
         "extracted_profile": None,
         "created_at": now,
         "updated_at": now,
+    }
+
+
+def make_game_doc(session_id: str, video_path: str) -> dict:
+    """Create a game document for basketball analysis."""
+    return {
+        "session_id": session_id,
+        "video_path": video_path,
+        "status": "queued",          # queued → processing → complete | failed
+        "progress": 0.0,
+        "frame_idx": 0,
+        "total_frames": 0,
+        "player_count": 0,
+        "team_colors": [],           # [{team_id, color_name, rgb}]
+        "duration_sec": 0.0,
+        "error": None,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    }
+
+
+def make_game_player_doc(
+    game_id: str,
+    subject_id: int,
+    jersey_number: int | None = None,
+    team_id: int | None = None,
+    jersey_color: str | None = None,
+) -> dict:
+    """Create a game player document."""
+    return {
+        "game_id": game_id,
+        "subject_id": subject_id,
+        "jersey_number": jersey_number,
+        "team_id": team_id,
+        "jersey_color": jersey_color,
+        "injury_events": [],
+        "final_quality": None,
+        "analysis_summary": None,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    }
+
+
+def make_player_frame_doc(
+    game_id: str,
+    subject_id: int,
+    frame_idx: int,
+    quality: dict | None = None,
+    biomechanics: dict | None = None,
+) -> dict:
+    """Create a player frame snapshot document."""
+    return {
+        "game_id": game_id,
+        "subject_id": subject_id,
+        "frame_idx": frame_idx,
+        "quality": quality,
+        "biomechanics": biomechanics,
+        "created_at": datetime.now(timezone.utc),
     }
 
 
