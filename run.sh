@@ -80,6 +80,13 @@ echo ""
 
 case "$ACTION" in
     up)
+        # ── Guard: prevent starting if already running ──
+        RUNNING_CONTAINERS=$(docker compose $COMPOSE_FILES --profile "$PROFILE" ps -q 2>/dev/null | head -1)
+        if [ -n "$RUNNING_CONTAINERS" ]; then
+            echo "[run] BRACE is already running! Use './run.sh down' first, or './run.sh logs' to view logs."
+            exit 1
+        fi
+
         echo "[run] Starting BRACE with profile=$PROFILE ..."
 
         if [ "$DEV_MODE" = true ]; then
@@ -131,8 +138,11 @@ case "$ACTION" in
         echo "  Backend:   http://localhost:8001"
         echo "  MongoDB:   mongodb://localhost:27017"
         echo ""
-        echo "[run] View logs: ./run.sh logs"
         echo "[run] Stop:      ./run.sh down"
+        echo ""
+        echo "[run] Tailing logs (Ctrl+C to detach — servers keep running)..."
+        echo ""
+        docker compose $COMPOSE_FILES --profile "$PROFILE" logs -f || true
         ;;
     down)
         # Kill local Next.js dev server if running

@@ -11,6 +11,7 @@ services:
       - ./brace:/app/brace
       - uploads:/app/uploads
       - ./data/sports_videos:/app/data/sports_videos:ro
+      - huggingface_cache:/root/.cache/huggingface
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     profiles:
       - nvidia
@@ -34,9 +35,11 @@ services:
       - ./brace:/app/brace
       - uploads:/app/uploads
       - ./data/sports_videos:/app/data/sports_videos:ro
+      - huggingface_cache:/root/.cache/huggingface
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     profiles:
       - cpu
 
 volumes:
   uploads:
+  huggingface_cache:
