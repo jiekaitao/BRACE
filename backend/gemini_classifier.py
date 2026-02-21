@@ -11,10 +11,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
-GEMINI_API_KEY = os.environ.get(
-    "GOOGLE_GEMINI_API_KEY",
-    "AIzaSyDrfeCSYbecPiJ1aLWUlY9MdGDBA96__W8",
-)
+GEMINI_API_KEY = os.environ.get("GOOGLE_GEMINI_API_KEY", "")
 
 # Rate limit: minimum seconds between API calls
 _MIN_CALL_INTERVAL = 2.0

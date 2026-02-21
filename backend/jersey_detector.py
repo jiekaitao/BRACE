@@ -14,10 +14,7 @@ import numpy as np
 
 GEMINI_PRO_MODEL = os.environ.get("GEMINI_PRO_MODEL", "gemini-2.0-flash")
 
-GEMINI_API_KEY = os.environ.get(
-    "GOOGLE_GEMINI_API_KEY",
-    "AIzaSyDrfeCSYbecPiJ1aLWUlY9MdGDBA96__W8",
-)
+GEMINI_API_KEY = os.environ.get("GOOGLE_GEMINI_API_KEY", "")
 
 # Rate limit: minimum seconds between API calls
 _MIN_CALL_INTERVAL = 5.0

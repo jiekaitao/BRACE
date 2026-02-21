@@ -50,8 +50,8 @@ def get_gemini_client():
     """Initialize Gemini client using google-genai SDK."""
     api_key = os.environ.get("GOOGLE_GEMINI_API_KEY", "")
     if not api_key:
-        # Fallback to hardcoded key from gemini_classifier.py
-        api_key = "AIzaSyDrfeCSYbecPiJ1aLWUlY9MdGDBA96__W8"
+        print("ERROR: GOOGLE_GEMINI_API_KEY not set. Add it to .env")
+        return None
 
     try:
         from google import genai

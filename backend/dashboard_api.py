@@ -24,10 +24,7 @@ except ImportError:
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
-GEMINI_API_KEY = os.environ.get(
-    "GOOGLE_GEMINI_API_KEY",
-    "AIzaSyDrfeCSYbecPiJ1aLWUlY9MdGDBA96__W8",
-)
+GEMINI_API_KEY = os.environ.get("GOOGLE_GEMINI_API_KEY", "")
 
 # Rate limit for guideline generation
 _guidelines_lock = threading.Lock()
