@@ -182,7 +182,7 @@ class GeminiActivityClassifier:
             contents.append(_CLASSIFY_PROMPT)
 
             response = self._model.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-pro",
                 contents=contents,
             )
             with self._lock:
