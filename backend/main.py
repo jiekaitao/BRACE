@@ -505,6 +505,7 @@ async def ws_analyze(websocket: WebSocket):
     mode = websocket.query_params.get("mode", "webcam")
     session_id = websocket.query_params.get("session_id", "")
     cluster_threshold = float(websocket.query_params.get("cluster_threshold", "2.0"))
+    client_type = websocket.query_params.get("client", "web")  # "web" or "vr"
     user_id_param = websocket.query_params.get("user_id", "")
 
     await websocket.accept()
@@ -534,7 +535,7 @@ async def ws_analyze(websocket: WebSocket):
     if mode == "video":
         await _handle_video_mode(websocket, session_id, cluster_threshold)
     else:
-        await _handle_webcam_mode(websocket, cluster_threshold, risk_modifiers=risk_modifiers)
+        await _handle_webcam_mode(websocket, cluster_threshold, risk_modifiers=risk_modifiers, client_type=client_type)
 
 
 async def _handle_video_mode(
@@ -560,14 +561,70 @@ async def _handle_video_mode(
             pass
 
 
+def _build_vr_response(
+    subjects_data: dict[str, dict[str, Any]],
+    active_ids: list[int],
+    frame_idx: int,
+    video_time: float,
+    vr_selected_subject: int | None,
+    timing: dict[str, Any],
+) -> dict[str, Any]:
+    """Build VR-optimized response: minimal data for all, detailed for selected."""
+    vr_subjects: dict[str, dict[str, Any]] = {}
+    for sid_str, data in subjects_data.items():
+        sid = int(sid_str)
+        if sid == vr_selected_subject:
+            # Selected: send analysis data but strip heavy visualization fields
+            vr_sub: dict[str, Any] = {
+                "label": data["label"],
+                "bbox": data["bbox"],
+                "phase": data["phase"],
+                "selected": True,
+                "n_segments": data["n_segments"],
+                "n_clusters": data["n_clusters"],
+                "cluster_id": data["cluster_id"],
+                "consistency_score": data["consistency_score"],
+                "is_anomaly": data["is_anomaly"],
+                "cluster_summary": data["cluster_summary"],
+                "identity_status": data.get("identity_status", "unknown"),
+                "identity_confidence": data.get("identity_confidence", 0),
+                "velocity": data.get("velocity", 0),
+                "rolling_velocity": data.get("rolling_velocity", 0),
+                "fatigue_index": data.get("fatigue_index", 0),
+                "peak_velocity": data.get("peak_velocity", 0),
+            }
+            if "quality" in data:
+                vr_sub["quality"] = data["quality"]
+            if "alert_text" in data:
+                vr_sub["alert_text"] = data["alert_text"]
+            vr_subjects[sid_str] = vr_sub
+        else:
+            # Unselected: bbox + label only (~80 bytes)
+            vr_subjects[sid_str] = {
+                "label": data["label"],
+                "bbox": data["bbox"],
+                "phase": data.get("phase", "calibrating"),
+                "selected": False,
+            }
+    return {
+        "frame_index": frame_idx,
+        "video_time": video_time,
+        "subjects": vr_subjects,
+        "active_track_ids": active_ids,
+        "timing": timing,
+    }
+
+
 async def _handle_webcam_mode(
     websocket: WebSocket, cluster_threshold: float, risk_modifiers: Any = None,
+    client_type: str = "web",
 ) -> None:
     """Process live webcam frames with multi-person tracking + pose estimation."""
     session_id = str(uuid.uuid4())  # unique per-session for VectorAI tracking
     manager = SubjectManager(fps=30.0, cluster_threshold=cluster_threshold, risk_modifiers=risk_modifiers)
     loop = asyncio.get_event_loop()
     frame_idx = 0
+    vr_selected_subject: int | None = None  # VR client's selected subject
 
     # Create IdentityResolver for this session (skip if using DummyExtractor)
     use_reid = (
@@ -684,6 +741,9 @@ async def _handle_webcam_mode(
                     if data.get("type") == "config":
                         if "cluster_threshold" in data:
                             manager.cluster_threshold = float(data["cluster_threshold"])
+                        continue
+                    if data.get("type") == "select_subject":
+                        vr_selected_subject = data.get("subject_id")  # int or None
                         continue
                 except (json.JSONDecodeError, KeyError):
                     pass
@@ -929,20 +989,28 @@ async def _handle_webcam_mode(
 
             # Send combined multi-subject response with timing
             active_ids = manager.get_active_track_ids()
-            await websocket.send_json({
-                "frame_index": frame_idx,
-                "video_time": video_time,
-                "subjects": subjects_data,
-                "active_track_ids": active_ids,
-                "timing": {
-                    "decode_ms": round(t_decode * 1000, 1),
-                    "pipeline_ms": round((t_infer - t0) * 1000, 1),
-                    "identity_ms": round((t_resolve - t_infer) * 1000, 1),
-                    "analyzer_ms": round((t_analyze - t_resolve) * 1000, 1),
-                    "total_ms": round((t_analyze - t0 + t_decode) * 1000, 1),
-                },
-                "gemini_stats": gemini.get_stats() if gemini is not None else None,
-            })
+            timing_dict = {
+                "decode_ms": round(t_decode * 1000, 1),
+                "pipeline_ms": round((t_infer - t0) * 1000, 1),
+                "identity_ms": round((t_resolve - t_infer) * 1000, 1),
+                "analyzer_ms": round((t_analyze - t_resolve) * 1000, 1),
+                "total_ms": round((t_analyze - t0 + t_decode) * 1000, 1),
+            }
+
+            if client_type == "vr":
+                await websocket.send_json(_build_vr_response(
+                    subjects_data, active_ids, frame_idx, video_time,
+                    vr_selected_subject, timing_dict,
+                ))
+            else:
+                await websocket.send_json({
+                    "frame_index": frame_idx,
+                    "video_time": video_time,
+                    "subjects": subjects_data,
+                    "active_track_ids": active_ids,
+                    "timing": timing_dict,
+                    "gemini_stats": gemini.get_stats() if gemini is not None else None,
+                })
 
             # Log timing every 30 frames
             if frame_idx % 30 == 0 and frame_idx > 0:
