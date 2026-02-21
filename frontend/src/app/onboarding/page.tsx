@@ -60,10 +60,6 @@ function OnboardingContent() {
     next();
   }, [next]);
 
-  const handleSkipLogin = useCallback(() => {
-    next();
-  }, [next]);
-
   const handleSkipChat = useCallback(() => {
     // Jump to mode selection (last step)
     setStep(STEPS.length - 1);
@@ -100,6 +96,19 @@ function OnboardingContent() {
 
   return (
     <div className="min-h-screen flex flex-col items-center px-5 py-8">
+      {/* Back to home */}
+      <div className="w-full max-w-md mb-4">
+        <button
+          onClick={() => router.push("/")}
+          className="flex items-center gap-1 text-sm text-[#AFAFAF] hover:text-[#777777] transition-colors"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          Back to home
+        </button>
+      </div>
+
       {/* Progress bar */}
       <div className="flex items-center mb-8 w-full max-w-md">
         {STEPS.map((_, i) => (
@@ -161,12 +170,6 @@ function OnboardingContent() {
             ) : (
               <div className="flex flex-col gap-4">
                 <LoginForm onSuccess={handleLoginSuccess} />
-                <button
-                  onClick={handleSkipLogin}
-                  className="text-sm text-[#AFAFAF] hover:text-[#777777] transition-colors text-center"
-                >
-                  Skip &mdash; continue as guest
-                </button>
               </div>
             )}
           </div>

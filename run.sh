@@ -80,6 +80,16 @@ case "$ACTION" in
     up)
         echo "[run] Starting BRACE with profile=$PROFILE ..."
         docker compose $COMPOSE_FILES --profile "$PROFILE" up -d
+
+        # ── Expose via Tailscale Funnel (public HTTPS + WSS) ──
+        if command -v tailscale &>/dev/null; then
+            echo "[run] Setting up Tailscale Funnel..."
+            tailscale funnel --bg --https=443 http://localhost:3000 2>/dev/null && \
+                echo "[run]   Frontend → https://$(tailscale status --self --json | python3 -c 'import sys,json; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')/" || true
+            tailscale funnel --bg --https=8443 http://localhost:8001 2>/dev/null && \
+                echo "[run]   Backend  → wss://$(tailscale status --self --json | python3 -c 'import sys,json; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))'):8443/" || true
+        fi
+
         echo ""
         echo "[run] Services started:"
         echo "  Frontend:  http://localhost:3000"
