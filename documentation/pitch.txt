@@ -1,0 +1,81 @@
+Project Name: BRACE
+Biomechanical Real-time Adaptive Clinical Evaluation
+
+---
+
+BRACE - 90 Second Pitch
+
+HOOK:
+Every year, 200,000 ACL tears happen in the US alone. Most are preventable
+-- the warning signs are visible in how you move, but you need a biomechanics
+lab to detect them. We put that lab in your browser.
+
+DEMO:
+Open laptop, point webcam at someone doing squats. Show the skeleton overlay
+appearing instantly. Point to the injury risk panel: "See that -- knee valgus
+at 22 degrees, flagged as medium ACL risk. That's the same measurement a
+sports medicine clinic charges $300 for."
+
+HOW IT WORKS:
+We run YOLO11 pose estimation on a GPU, normalize the skeleton into a
+body-relative coordinate frame so we can compare anyone's movement to anyone
+else's, then run 12 biomechanical metrics every frame -- angular velocities,
+center of mass tracking, isolation forest anomaly detection -- all streaming
+at 30fps.
+
+DIFFERENTIATOR:
+Existing tools are either offline batch processors or simple angle calculators.
+We do real-time fatigue detection using spectral median frequency -- a technique
+borrowed from clinical EMG research. We detect when your form is degrading
+before you feel it.
+
+PRIMARY FOCUS - INDIVIDUAL HEALTH:
+This is a personal health tool first. Think total body workouts at home or
+in the gym. You tell BRACE about your body -- "I tore my ACL two years ago,
+my right shoulder clicks when I press overhead" -- through a conversational
+Gemini agent that builds your injury profile. Then every time you work out,
+BRACE knows YOUR vulnerabilities. The squat threshold that's fine for someone
+else triggers a warning for you 35% earlier. Your shoulder gets extra
+monitoring during overhead presses. Movement-specific guidelines adapt to
+your history -- not generic advice, but "keep knees tracking over toes,
+IMPORTANT given your ACL history."
+
+REAL EXAMPLE - "IS THIS WORKOUT SAFE FOR ME?":
+You rolled your ankle forward in a rock climbing fall. It still bothers you
+months later. You find a 20-minute HIIT video on YouTube and want to know:
+is this safe for me before I commit? Drop the video URL into BRACE. It
+analyzes every movement in the workout -- the box jumps, the lateral lunges,
+the single-leg hops -- against YOUR ankle injury profile. Before you even
+start, BRACE flags: "Minutes 4-6 contain plyometric landings with high
+ankle dorsiflexion load. Given your anterior ankle injury, consider the
+low-impact modification or skip this segment." You get a risk-annotated
+timeline of someone else's workout, personalized to your body, before you
+do a single rep.
+
+Upload your own workout video after the fact? BRACE scrubs it for the
+highest-risk moments and marks them on the timeline so you can review
+exactly where your form broke down and why.
+
+MULTI-PERSON / TEAM USE CASE:
+BRACE tracks every person in the frame simultaneously -- each with their own
+skeleton, their own fatigue curve, their own injury risk profile. Point a
+camera at a full practice field and the system independently monitors every
+player's biomechanics in parallel.
+
+For coaches: see who's accumulating fatigue fastest, whose form is degrading,
+who's compensating on one side. Make substitution decisions backed by data
+instead of guessing who looks tired. Catch the player whose knee valgus is
+creeping up before they plant wrong and tear something.
+
+The same cross-cut re-identification system that tracks players through camera
+angle changes means you can switch between field cameras and BRACE keeps each
+player's identity and fatigue history intact.
+
+But the core pitch stays health-first: we help individuals protect their
+bodies during exercise, and the multi-person capability means that scales
+from one person in a living room to an entire team on a field.
+
+ASK:
+- Health/Sports context: "We're looking for partnerships with athletic training
+  programs to validate our injury risk thresholds on real clinical data."
+- Technical context: "We're open-sourcing the streaming biomechanics pipeline."

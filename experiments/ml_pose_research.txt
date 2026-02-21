@@ -1,0 +1,270 @@
+ML Pose Estimation Research for BRACE Smoothing
+========================================================
+Date: 2026-02-11
+Context: RTX 5090 (32GB VRAM), current system uses YOLO11-pose (legacy)
+         or YOLO11 det + RTMW3D-L 133kpt (advanced), ~30fps
+
+========================================================================
+SECTION 1: TEMPORAL POSE MODELS (process video sequences, reduce jitter)
+========================================================================
+
+1.1 SmoothNet (ECCV 2022)
+--------------------------
+Paper: "SmoothNet: A Plug-and-Play Network for Refining Human Poses in Videos"
+GitHub: https://github.com/cure-lab/SmoothNet
+Architecture: Motion-aware fully-connected network (temporal-only, per-joint)
+              No spatial modeling - learns long-range temporal relations per joint
+Parameters: Very lightweight FC layers (estimated <1M params)
+Window sizes: 8, 16, 32, 64 frames (32 recommended for near-online)
+Smoothness: Acceleration error on AIST++ with SPIN: 33.19 -> 4.17 (87% reduction!)
+Accuracy: Modest MPJPE improvement; primary benefit is temporal smoothness
+Speed: Supports GPU and CPU inference. Negligible overhead (<1ms per frame)
+Pretrained: Yes - trained on AIST-VIBE-3D, 3DPW-SPIN-3D, H36M-FCN-3D
+Transferability: Trains on 3D, generalizes to 2D, 3D, and SMPL 6D representations
+  Tested with 13 different pose estimator backbones
+Integration difficulty: 1/5 (plug-and-play post-processor, any pose estimator)
+OUR USE: Ideal first step. Apply after RTMW3D or YOLO-pose output.
+  Maps directly to our PipelineResult keypoints.
+
+1.2 SynSP (CVPR 2024) - SmoothNet successor
+----------------------------------------------
+Paper: "SynSP: Synergy of Smoothness and Precision in Pose Sequences Refinement"
+GitHub: https://github.com/InvertedForest/SynSP
+Architecture: Dual-branch (smoothness + precision) with quality-aware fusion
+Improvement over SmoothNet: Explicitly models tension between smooth vs accurate
+  Uses acceleration-vs-position difference as quality cue
+Supports: 2D, 3D, and SMPL representations (single-view and multi-view)
+Performance: State-of-the-art on 4 datasets, shorter input sequences than SmoothNet
+Integration difficulty: 2/5 (similar API to SmoothNet, newer codebase)
+OUR USE: Upgrade path from SmoothNet if we want better accuracy+smoothness tradeoff.
+
+1.3 MotionBERT (ICCV 2023)
+----------------------------
+Paper: "MotionBERT: A Unified Perspective on Learning Human Motion Representations"
+GitHub: https://github.com/Walter0807/MotionBERT
+Architecture: Dual-stream Spatio-temporal Transformer (DSTformer)
+  Pretraining: recover 3D motion from noisy 2D observations
+Parameters: Full model ~large; MotionBERT-Lite = 61MB
+Sequence length: Up to 243 frames
+Accuracy: MPJPE 35.8mm (detected 2D), 25.3mm (GT 2D) on Human3.6M - SOTA
+Speed: ~60 FPS reported (with detected 2D input), depends on sequence buffering
+Pretrained: Yes, full and Lite variants
+Smoothness: Inherent temporal smoothing from spatio-temporal transformer
+Integration difficulty: 3/5 (needs 2D pose input buffer, heavier model)
+OUR USE: Could replace RTMW3D for 3D lifting if we want unified 2D->3D+smooth.
+  But adds latency from sequence buffering (243 frames = ~8s at 30fps).
+
+1.4 PoseFormerV2 (CVPR 2023)
+------------------------------
+Paper: "PoseFormerV2: Exploring Frequency Domain for Efficient 3D Pose Estimation"
+GitHub: https://github.com/QitaoZhao/PoseFormerV2
+Architecture: Time-Frequency Feature Fusion (DCT + temporal transformer)
+  Key insight: Low-frequency DCT coefficients capture motion, filter noise
+Accuracy: 47.6mm MPJPE with 81-frame receptive field
+Efficiency: 77.2 MFLOPs vs MHFormer's 342.9 MFLOPs (4.4x faster, same accuracy)
+Robustness: Superior stability against Gaussian noise in 2D detections
+Pretrained: Yes, multiple configurations
+Integration difficulty: 3/5 (2D->3D lifter, needs pose buffer)
+OUR USE: Lighter alternative to MotionBERT for 2D->3D lifting.
+  DCT-based approach inherently filters high-frequency jitter.
+
+1.5 MotionAGFormer (WACV 2024)
+--------------------------------
+Paper: "MotionAGFormer: Enhancing 3D HPE with Transformer-GCNFormer Network"
+GitHub: https://github.com/TaatiTeam/MotionAGFormer
+Architecture: Dual-stream (Transformer + GCN), adaptive fusion
+  GCN branch exploits local joint adjacency, transformer branch global context
+Variants: S/B/L/XL for speed-accuracy tradeoff
+Accuracy: 38.4mm MPJPE (MotionAGFormer-B) on Human3.6M
+  Uses 1/4 parameters and 3x more efficient than previous SOTA
+Pretrained: Yes
+Integration difficulty: 3/5 (2D->3D lifter with temporal modeling)
+OUR USE: Most efficient 2D->3D lifter with built-in smoothing.
+
+1.6 PoseMamba (AAAI 2025)
+---------------------------
+Paper: "PoseMamba: Monocular 3D HPE with Bidirectional Global-Local SSM"
+GitHub: https://github.com/nankingjing/PoseMamba
+Architecture: State Space Model (Mamba) - linear complexity vs quadratic transformers
+  Bidirectional global-local spatio-temporal SSM block
+Accuracy: 38.1mm P1 (detected 2D), 15.6mm (GT 2D) on Human3.6M
+Efficiency: Uses only 16% of MotionBERT's compute, 36% of MotionAGFormer's
+  Linear O(n) complexity vs O(n^2) for transformers
+Pretrained: Yes
+Integration difficulty: 3/5 (2D->3D lifter, needs Mamba dependency)
+OUR USE: Most efficient temporal 3D lifter. Best compute/accuracy ratio.
+  New architecture (Mamba) but gaining traction.
+
+========================================================================
+SECTION 2: SMOOTHER SINGLE-FRAME MODELS (replace YOLO-pose)
+========================================================================
+
+2.1 ViTPose++ (TPAMI 2023)
+----------------------------
+Paper: "ViTPose++: Vision Transformer for Generic Body Pose Estimation"
+GitHub: https://github.com/ViTAE-Transformer/ViTPose
+Architecture: Vision Transformer backbone with task-specific FFN experts
+Variants:
+  ViTPose-S: 24M params, 73.8 AP, 1432 FPS (top-down, single-person crop)
+  ViTPose-B: 75.8 AP
+  ViTPose-L: 78.3 AP
+  ViTPose-H: 79.4 AP, 81.1 AP on COCO test-dev (SOTA)
+Multi-task: Trained on COCO + AIC + MPII + animal datasets simultaneously
+Speed note: FPS is for single-person crops (top-down), need detector first
+Pretrained: Yes (MAE pretrained, multiple sizes)
+Integration difficulty: 3/5 (top-down, needs detector + crops, heavy for huge)
+OUR USE: Could replace RTMW3D for higher accuracy per-person crops.
+  But we already have YOLO11 detector + RTMW3D which is similar pipeline.
+
+2.2 RTMO (CVPR 2024)
+----------------------
+Paper: "RTMO: Towards High-Performance One-Stage Real-Time Multi-Person Pose"
+GitHub: https://github.com/open-mmlab/mmpose/tree/main/projects/rtmo
+Architecture: One-stage (no separate detector needed), dual 1-D heatmaps in YOLO arch
+Variants (COCO val2017 / V100 latency):
+  RTMO-s: 68.6 AP, 8.9ms  (~112 FPS)
+  RTMO-m: 72.6 AP, 12.4ms (~80 FPS)
+  RTMO-l: 74.8 AP, 19.1ms (~52 FPS) - on CrowdPose: 73.2 AP (SOTA for one-stage)
+Speed: 141 FPS on V100 for RTMO-l with body7 training (batch optimized)
+Pretrained: Yes, via mmpose/rtmlib (ONNX available)
+Integration difficulty: 2/5 (mmpose ecosystem, ONNX via rtmlib - same as our RTMW3D)
+OUR USE: Drop-in replacement for YOLO11-pose in legacy backend.
+  Higher accuracy (74.8 vs ~70 AP), similar speed, one-stage (no separate det).
+  But 2D only (17 keypoints). Would need 3D lifter for advanced pipeline.
+
+2.3 DETRPose (2025)
+---------------------
+Paper: "DETRPose: Real-time end-to-end transformer for multi-person pose estimation"
+GitHub: https://github.com/SebastianJanampa/DETRPose
+Architecture: DETR-based end-to-end, Pose Denoising technique
+Variants (COCO test-dev / TensorRT FP16):
+  DETRPose-S: smallest variant
+  DETRPose-M: mid-range
+  DETRPose-L: 71.2 AP, 32.5ms latency (~31 FPS), 36.8M params
+  DETRPose-X: 72.2 AP, 52.1ms latency (~19 FPS), 82.3M params
+  Outperforms YOLO11-X and YOLOv8-X on COCO test-dev
+Training: 5-10x fewer epochs than alternatives
+Pretrained: Yes (based on D-FINE pretrained on Object365)
+Integration difficulty: 3/5 (new architecture, less ecosystem support than mmpose)
+OUR USE: Interesting for accuracy but slower than RTMO. New and less battle-tested.
+
+========================================================================
+SECTION 3: POST-PROCESSING APPROACHES
+========================================================================
+
+3.1 SmoothNet as Plug-and-Play (described in 1.1 above)
+  - Attach after any pose estimator
+  - 87% acceleration error reduction
+  - Negligible compute overhead
+  - Easiest integration path
+
+3.2 OneEuro Filter (classical, widely used)
+  - Already being evaluated in our experiments
+  - Zero ML overhead, runs on CPU
+  - Good for real-time, tunable via min_cutoff and beta
+  - Limited: cannot recover from large single-frame errors
+
+3.3 Custom Lightweight LSTM/GRU Smoother
+  - Train a small (32-64 hidden units) GRU on our pipeline output
+  - Input: N-frame window of joint positions
+  - Output: smoothed current frame
+  - Advantages: can learn domain-specific motion patterns
+  - Training data: our own video pipeline output (self-supervised via smoothness loss)
+  - Inference: <0.1ms per frame, ~10K parameters
+  - Integration difficulty: 4/5 (need to train, validate, deploy custom model)
+
+3.4 Savitzky-Golay / Butterworth (classical)
+  - Already being evaluated in our experiments
+  - Zero ML overhead
+  - Good for offline/buffered processing
+  - Less adaptive than learning-based methods
+
+========================================================================
+SECTION 4: RECOMMENDATIONS (ranked by effort-to-benefit ratio)
+========================================================================
+
+RANK 1: SmoothNet (or SynSP) as post-processor
+  Effort: LOW (1-2 days integration)
+  Benefit: HIGH (87% jitter reduction, no accuracy loss)
+  Why: Plug-and-play. Works with our existing RTMW3D or YOLO-pose output.
+    No changes to detection/tracking pipeline. Just add a temporal buffer
+    of 32 frames and run SmoothNet on the keypoint sequence.
+  Implementation plan:
+    1. pip install + download pretrained weights
+    2. Add 32-frame circular buffer per tracked person in AdvancedPoseBackend
+    3. Run SmoothNet on buffer, output smoothed current frame
+    4. Feed smoothed keypoints to PipelineResult
+  Latency impact: ~32 frames delay (~1s at 30fps) for optimal smoothing,
+    or use window_size=8 for ~0.27s delay with slightly less smoothing.
+  Complementary with OneEuro: SmoothNet for gross smoothing,
+    OneEuro for residual micro-jitter (belt-and-suspenders approach).
+
+RANK 2: RTMO-l as YOLO-pose replacement (legacy backend upgrade)
+  Effort: LOW-MEDIUM (2-3 days)
+  Benefit: MEDIUM (higher AP, inherently smoother one-stage approach)
+  Why: Same rtmlib/ONNX ecosystem we already use for RTMW3D.
+    74.8 AP vs ~70 AP for YOLO-pose. One-stage = no detection latency.
+    On RTX 5090 should exceed 100 FPS easily.
+  Limitation: 2D only (17 COCO keypoints). For advanced 3D pipeline,
+    still need RTMW3D or a 2D->3D lifter.
+
+RANK 3: PoseMamba as 2D->3D temporal lifter
+  Effort: MEDIUM (3-5 days)
+  Benefit: HIGH (smooth 3D output with 84% less compute than MotionBERT)
+  Why: Best efficiency/accuracy ratio for temporal 3D lifting.
+    Could replace RTMW3D entirely: YOLO11-det -> 2D pose -> PoseMamba -> 3D.
+    Linear complexity means it scales better with sequence length.
+    Built-in temporal smoothing from SSM architecture.
+  Limitation: Newer architecture, less community support. Outputs 17 joints
+    (not 133 wholebody). Would lose hand/face keypoints.
+
+========================================================================
+SECTION 5: COMBINED STRATEGY (ML + Classical Filtering)
+========================================================================
+
+The optimal approach combines ML temporal models with classical filters:
+
+Layer 1 (Detection):   YOLO11 or RTMO for 2D detection (per-frame)
+Layer 2 (3D Lifting):  RTMW3D (current) or PoseMamba (temporal, smoother)
+Layer 3 (ML Smooth):   SmoothNet/SynSP post-processor (32-frame window)
+Layer 4 (Classical):   OneEuro filter for residual micro-jitter (<1ms overhead)
+
+Each layer targets different frequency bands of noise:
+- Layer 2 reduces gross 3D estimation noise (temporal context)
+- Layer 3 removes medium-frequency jitter (learned motion priors)
+- Layer 4 catches remaining high-frequency noise (adaptive cutoff)
+
+For REAL-TIME (30fps target on RTX 5090):
+- Use SmoothNet with window_size=8 (0.27s latency, still large improvement)
+- OneEuro filter adds zero latency
+- Combined: near-smooth output with <0.3s total added latency
+
+For NEAR-REAL-TIME (acceptable 1s delay):
+- SmoothNet window_size=32 (optimal smoothing)
+- Optional: PoseMamba for temporal 3D lifting
+- Result: publication-quality smooth trajectories
+
+========================================================================
+SECTION 6: KEY METRICS COMPARISON TABLE
+========================================================================
+
+Model            | Type       | MPJPE(mm) | COCO AP | Speed     | Smooth | Params
+-----------------|------------|-----------|---------|-----------|--------|--------
+YOLO11x-pose     | 1-stage 2D | N/A       | ~70     | ~30fps*   | Low    | 58M
+RTMO-l           | 1-stage 2D | N/A       | 74.8    | 141fps V100| Med   | ~30M
+DETRPose-L       | 1-stage 2D | N/A       | 71.2    | 31fps TRT | Med    | 36.8M
+ViTPose-H        | top-down 2D| N/A       | 79.4    | varies**  | Med    | large
+RTMW3D-L         | top-down 3D| N/A       | N/A     | ~25fps*   | Low    | ~large
+MotionBERT-Lite  | 2D->3D lift| 37.2      | N/A     | ~60fps    | High   | 61MB
+PoseFormerV2     | 2D->3D lift| 47.6      | N/A     | fast      | High   | small
+MotionAGFormer-B | 2D->3D lift| 38.4      | N/A     | fast      | High   | 1/4 MB
+PoseMamba-L      | 2D->3D lift| 38.1      | N/A     | very fast | High   | tiny
+SmoothNet        | post-proc  | ~same     | N/A     | <1ms/frm  | V.High | <1M
+SynSP            | post-proc  | improved  | N/A     | ~1ms/frm  | V.High | small
+
+* Our measured FPS on RTX 5090 with full pipeline
+** Top-down speed depends on number of detected persons
+
+========================================================================
+END OF RESEARCH
+========================================================================

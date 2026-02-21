@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# YOLO model weights (too large for git)
+*.pt
+*.onnx
+*.engine
+
+# Data & outputs (large files, top-level only)
+/data/
+/outputs/
+
+# Node.js
+node_modules/
+.next/
+out/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# pytest
+.pytest_cache/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Backlog & prompts (internal notes)
+BACKLOG/
+PROMPTS/
+
+# Experiment artifacts (large/generated)
+experiments/.feature_cache/
+experiments/review_frames/
+experiments/pretrained_models/
+experiments/*.json
+
+# Backend uploads
+backend/uploads/
+
+# Documentation swap files
+documentation/.*.swp

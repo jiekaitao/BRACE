@@ -1,0 +1,26 @@
+"use client";
+
+import { useAuth } from "@/contexts/AuthContext";
+
+export default function UserBadge() {
+  const { user, loading, logout } = useAuth();
+
+  if (loading || !user) return null;
+
+  return (
+    <div className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-white border-2 border-[#E5E5E5] rounded-full px-4 py-2 shadow-[0_2px_0_#E5E5E5]">
+      <div className="w-7 h-7 rounded-full bg-[#DDF4FF] flex items-center justify-center">
+        <span className="text-xs font-bold text-[#1CB0F6]">
+          {user.username[0].toUpperCase()}
+        </span>
+      </div>
+      <span className="text-sm font-bold text-[#3C3C3C]">{user.username}</span>
+      <button
+        onClick={logout}
+        className="text-xs text-[#AFAFAF] hover:text-[#EA2B2B] transition-colors font-bold ml-1"
+      >
+        Log out
+      </button>
+    </div>
+  );
+}
