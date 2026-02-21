@@ -31,12 +31,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (username: string) => {
     const res = await authApi.login(username);
     setUser({ user_id: res.user_id, username: res.username });
-  }, []);
+    await refreshUser();
+  }, [refreshUser]);
 
   const register = useCallback(async (username: string) => {
     const res = await authApi.register(username);
     setUser({ user_id: res.user_id, username: res.username });
-  }, []);
+    await refreshUser();
+  }, [refreshUser]);
 
   const logout = useCallback(async () => {
     await authApi.logout();

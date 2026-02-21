@@ -395,3 +395,13 @@ export interface ChatResponse {
   extracted_profile?: InjuryProfile | null;
   profile_complete?: boolean;
 }
+
+/** Per-metric threshold multipliers from the risk profile system. */
+export interface RiskModifiers {
+  fppa_scale: number;
+  hip_drop_scale: number;
+  trunk_lean_scale: number;
+  asymmetry_scale: number;
+  angular_velocity_scale: number;
+  monitor_joints: string[];
+}

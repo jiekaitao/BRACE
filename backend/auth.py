@@ -20,6 +20,24 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # Pydantic models
 # ---------------------------------------------------------------------------
 
+import re
+
+_USERNAME_RE = re.compile(r"^[a-z]+$")
+
+
+def _validate_username(username: str) -> str:
+    """Strip, lowercase, and enforce lowercase-letters-only."""
+    username = username.strip().lower()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username cannot be empty")
+    if not _USERNAME_RE.match(username):
+        raise HTTPException(
+            status_code=400,
+            detail="Username must contain only lowercase letters (a-z), no numbers or special characters",
+        )
+    return username
+
+
 class RegisterRequest(BaseModel):
     username: str
 
@@ -127,9 +145,7 @@ async def get_current_user(authorization: str = Header(None)) -> dict:
 @router.post("/register", response_model=AuthResponse)
 async def register(req: RegisterRequest):
     """Register a new user. Duplicate username returns 409."""
-    username = req.username.strip()
-    if not username:
-        raise HTTPException(status_code=400, detail="Username cannot be empty")
+    username = _validate_username(req.username)
     existing = await get_user(username)
     if existing is not None:
         raise HTTPException(status_code=409, detail="Username already taken")
@@ -145,9 +161,7 @@ async def register(req: RegisterRequest):
 @router.post("/login", response_model=AuthResponse)
 async def login(req: LoginRequest):
     """Login by username. Auto-creates user if not found."""
-    username = req.username.strip()
-    if not username:
-        raise HTTPException(status_code=400, detail="Username cannot be empty")
+    username = _validate_username(req.username)
     user = await get_user(username)
     if user is None:
         user = await create_user(username)

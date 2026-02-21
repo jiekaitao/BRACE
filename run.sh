@@ -81,13 +81,24 @@ case "$ACTION" in
         echo "[run] Starting BRACE with profile=$PROFILE ..."
         docker compose $COMPOSE_FILES --profile "$PROFILE" up -d
 
-        # ── Expose via Tailscale Funnel (public HTTPS + WSS) ──
+        # ── Expose via Cloudflare Tunnel (braceml.com) ──
+        if command -v cloudflared &>/dev/null; then
+            # Kill any existing tunnel process
+            pkill -f "cloudflared tunnel run" 2>/dev/null || true
+            sleep 1
+            echo "[run] Starting Cloudflare Tunnel..."
+            cloudflared tunnel run brace >> /tmp/cloudflared.log 2>&1 &
+            echo "[run]   https://braceml.com → frontend"
+            echo "[run]   https://ws.braceml.com → backend (WebSocket)"
+        fi
+
+        # ── Tailscale Funnel (tailnet fallback) ──
         if command -v tailscale &>/dev/null; then
-            echo "[run] Setting up Tailscale Funnel..."
-            tailscale funnel --bg --https=443 http://localhost:3000 2>/dev/null && \
-                echo "[run]   Frontend → https://$(tailscale status --self --json | python3 -c 'import sys,json; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')/" || true
-            tailscale funnel --bg --https=8443 http://localhost:8001 2>/dev/null && \
-                echo "[run]   Backend  → wss://$(tailscale status --self --json | python3 -c 'import sys,json; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))'):8443/" || true
+            TS_HOST=$(tailscale status --self --json | python3 -c 'import sys,json; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' 2>/dev/null) || true
+            if [ -n "$TS_HOST" ]; then
+                tailscale funnel --bg --https=443 http://localhost:3000 2>/dev/null && \
+                    echo "[run]   Funnel → https://$TS_HOST/" || true
+            fi
         fi
 
         echo ""

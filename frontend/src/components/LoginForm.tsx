@@ -44,9 +44,12 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
         <input
           type="text"
           value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value.toLowerCase().replace(/[^a-z]/g, "");
+            setUsername(val);
+          }}
           onKeyDown={(e) => e.key === "Enter" && handleContinue()}
-          placeholder="Your username"
+          placeholder="Letters only (a-z)"
           className="w-full px-4 py-3 text-base border-2 border-[#E5E5E5] rounded-[12px] outline-none focus:border-[#1CB0F6] transition-colors"
           disabled={loading}
           autoFocus
