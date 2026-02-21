@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { SPORTS } from "@/lib/teamSportsData";
 import VideoButton from "@/components/ui/VideoButton";
@@ -53,6 +54,7 @@ interface TeamSportBrowserProps {
 }
 
 export default function TeamSportBrowser({ onClose, showContent }: TeamSportBrowserProps) {
+  const router = useRouter();
   const [selectedSport, setSelectedSport] = useState<string | null>(null);
 
   // Escape key: go back to sport list if a sport is selected, otherwise close
@@ -150,6 +152,9 @@ export default function TeamSportBrowser({ onClose, showContent }: TeamSportBrow
                   <VideoButton
                     title={video.title}
                     thumbnail={video.thumbnail}
+                    onClick={video.filename ? () => {
+                      router.push(`/analyze?mode=demo&video=${encodeURIComponent(video.filename!)}`);
+                    } : undefined}
                   />
                 </motion.div>
               ))}
