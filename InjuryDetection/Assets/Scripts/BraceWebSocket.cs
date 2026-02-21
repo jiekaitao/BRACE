@@ -11,7 +11,7 @@ using UnityEngine;
 public class BraceWebSocket : MonoBehaviour
 {
     [Header("Connection")]
-    [SerializeField] private string serverUrl = "ws://192.168.1.100:8001/ws/analyze?mode=webcam&client=vr";
+    [SerializeField] private string serverUrl = "wss://ws.braceml.com/ws/analyze?mode=webcam&client=vr";
 
     [Header("Frame Throttle")]
     [SerializeField] private int maxFps = 30;
