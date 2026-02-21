@@ -7,6 +7,7 @@ x-backend-common: &backend-common
     - MONGODB_URI=mongodb://mongo:27017/brace
     - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
     - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-}
+    - DISABLE_REID=${DISABLE_REID:-1}
     - VECTORAI_HOST=vectorai
     - VECTORAI_PORT=50051
   depends_on:
@@ -35,6 +36,7 @@ x-backend-common: &backend-common
     - ./backend/vectorai_store.py:/app/vectorai_store.py:ro
     - ./backend/vector_activity_classifier.py:/app/vector_activity_classifier.py:ro
     - ./backend/vector_movement_search.py:/app/vector_movement_search.py:ro
+    - ./backend/dashboard_api.py:/app/dashboard_api.py:ro
     - ./backend/basketball_processor.py:/app/basketball_processor.py:ro
     - ./backend/jersey_detector.py:/app/jersey_detector.py:ro
     - ./backend/vdss_proto:/app/vdss_proto:ro

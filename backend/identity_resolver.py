@@ -46,6 +46,10 @@ class _IdentityGallery:
     proportions: ProportionAccumulator = field(default_factory=ProportionAccumulator)
     status: str = "unknown"  # "unknown" | "tentative" | "confirmed"
     gallery_size: int = 20
+    jersey_number: int | None = None
+    jersey_color: str | None = None  # e.g. "red", "white"
+    first_seen_frame: int = 0
+    total_frames: int = 0
 
     def add_embedding(self, emb: np.ndarray) -> None:
         self.embeddings.append(emb)
@@ -366,7 +370,7 @@ class IdentityResolver:
             else:
                 # In post-cut mode, match against ALL galleries (skip nothing)
                 if in_post_cut:
-                    subject_id = self._match_cross_cut(emb, landmarks, current_active)
+                    subject_id = self._match_cross_cut(emb, landmarks, pr.bbox_normalized, current_active)
                 else:
                     subject_id = self._match_to_existing_by_landmarks(
                         emb, landmarks, pr.bbox_normalized, current_active
@@ -399,6 +403,7 @@ class IdentityResolver:
                     gallery = _IdentityGallery(
                         subject_id=subject_id,
                         gallery_size=self._gallery_size,
+                        first_seen_frame=self._frame_count,
                     )
                     self._galleries[subject_id] = gallery
 
@@ -432,6 +437,9 @@ class IdentityResolver:
                         gallery.proportions.add(limbs)
 
                 self._track_to_subject[track_id] = subject_id
+
+            # Increment total_frames for tracking observation count
+            self._galleries[subject_id].total_frames += 1
 
             self._last_known_bboxes[subject_id] = (
                 pr.bbox_normalized, self._frame_count
@@ -588,6 +596,11 @@ class IdentityResolver:
         Same logic as _match_to_existing but takes MediaPipe landmarks directly
         instead of a TrackedPerson with COCO keypoints.
         """
+        # Jersey match takes priority — strongest identity signal
+        jersey_match = self._match_by_jersey(bbox_normalized, current_active)
+        if jersey_match is not None:
+            return jersey_match
+
         skip = self._active_subjects | (current_active or set())
 
         # Collect inactive galleries for single-person bias check
@@ -683,6 +696,7 @@ class IdentityResolver:
         self,
         emb: np.ndarray | None,
         landmarks: np.ndarray,
+        bbox_normalized: tuple[float, float, float, float],
         current_active: set[int] | None = None,
     ) -> int | None:
         """Match a new detection against ALL galleries after a scene cut.
@@ -691,6 +705,11 @@ class IdentityResolver:
         a scene cut, all tracks are new and all galleries are candidates.
         Only skips subjects already assigned in this frame (current_active).
         """
+        # Jersey match takes priority — strongest signal after scene cut
+        jersey_match = self._match_by_jersey(bbox_normalized, current_active)
+        if jersey_match is not None:
+            return jersey_match
+
         skip = current_active or set()
 
         best_score = -1.0
@@ -728,6 +747,173 @@ class IdentityResolver:
                 return best_id
 
         return None
+
+    def set_jersey(self, subject_id: int, jersey_number: int, jersey_color: str) -> None:
+        """Set jersey number and color for a subject's gallery.
+
+        Args:
+            subject_id: The subject to update.
+            jersey_number: Detected jersey number (0-99).
+            jersey_color: Color name (e.g. "red", "white").
+        """
+        gallery = self._galleries.get(subject_id)
+        if gallery is None:
+            return
+        gallery.jersey_number = jersey_number
+        gallery.jersey_color = jersey_color.lower().strip() if jersey_color else None
+        print(
+            f"[reid-jersey] S{subject_id} → #{jersey_number} {jersey_color}",
+            flush=True,
+        )
+
+    def merge_by_jersey(self, subject_id: int) -> int:
+        """Merge duplicate subjects that share the same jersey number+color.
+
+        After setting a jersey on *subject_id*, scan all other galleries for the
+        same (jersey_number, jersey_color) pair. If found, merge the **newer**
+        subject into the **older** one (lower subject_id = canonical).
+
+        Returns:
+            The canonical subject_id (may differ from input if merged).
+        """
+        gallery = self._galleries.get(subject_id)
+        if gallery is None or gallery.jersey_number is None:
+            return subject_id
+
+        target_number = gallery.jersey_number
+        target_color = gallery.jersey_color
+
+        # Find all galleries with the same jersey
+        same_jersey = [
+            sid for sid, g in self._galleries.items()
+            if sid != subject_id
+            and g.jersey_number == target_number
+            and g.jersey_color == target_color
+        ]
+        if not same_jersey:
+            return subject_id
+
+        # Canonical = lowest subject_id among all matches + self
+        all_candidates = same_jersey + [subject_id]
+        canonical_id = min(all_candidates)
+        canonical_gallery = self._galleries[canonical_id]
+
+        # Merge all non-canonical into canonical
+        for sid in all_candidates:
+            if sid == canonical_id:
+                continue
+            other = self._galleries.get(sid)
+            if other is None:
+                continue
+
+            # Copy embeddings
+            for emb in other.embeddings:
+                canonical_gallery.add_embedding(emb)
+
+            # Merge proportions (add raw samples)
+            if other.proportions._samples:
+                for sample in other.proportions._samples:
+                    canonical_gallery.proportions.add(sample)
+
+            # Accumulate frame counts
+            canonical_gallery.total_frames += other.total_frames
+
+            # Remap track_to_subject entries
+            for tid, mapped_sid in list(self._track_to_subject.items()):
+                if mapped_sid == sid:
+                    self._track_to_subject[tid] = canonical_id
+
+            # Update active subjects
+            if sid in self._active_subjects:
+                self._active_subjects.discard(sid)
+                self._active_subjects.add(canonical_id)
+
+            # Transfer last known bbox if more recent
+            if sid in self._last_known_bboxes:
+                other_bbox, other_frame = self._last_known_bboxes[sid]
+                canon_entry = self._last_known_bboxes.get(canonical_id)
+                if canon_entry is None or other_frame > canon_entry[1]:
+                    self._last_known_bboxes[canonical_id] = (other_bbox, other_frame)
+                del self._last_known_bboxes[sid]
+
+            # Remove merged gallery
+            del self._galleries[sid]
+            print(
+                f"[reid-jersey] Merged S{sid} into S{canonical_id} "
+                f"(jersey #{target_number} {target_color})",
+                flush=True,
+            )
+
+        return canonical_id
+
+    def _match_by_jersey(
+        self,
+        bbox_normalized: tuple[float, float, float, float],
+        current_active: set[int] | None = None,
+    ) -> int | None:
+        """Try to match a new track against galleries with known jersey numbers.
+
+        Checks inactive galleries that have a jersey_number set. A match requires
+        the same jersey_number + jersey_color AND either spatial proximity or
+        recent observation (within 300 frames / ~10s for scene cuts).
+
+        Args:
+            bbox_normalized: Normalized bounding box of the new detection.
+            current_active: Subject IDs already assigned this frame.
+
+        Returns:
+            Matching subject_id, or None.
+        """
+        skip = self._active_subjects | (current_active or set())
+
+        person_cx = (bbox_normalized[0] + bbox_normalized[2]) / 2
+        person_cy = (bbox_normalized[1] + bbox_normalized[3]) / 2
+
+        best_id = None
+        best_age = float("inf")
+
+        for sid, gallery in self._galleries.items():
+            if sid in skip:
+                continue
+            if gallery.jersey_number is None:
+                continue
+            # Skip tiny fragment galleries — too unreliable
+            if gallery.total_frames < 5:
+                continue
+
+            last_entry = self._last_known_bboxes.get(sid)
+            if last_entry is None:
+                continue
+            last_bbox, last_frame = last_entry
+            age = self._frame_count - last_frame
+
+            # Scene-cut tolerance: if seen within 300 frames, match by jersey alone
+            if age <= 300:
+                if age < best_age:
+                    best_age = age
+                    best_id = sid
+                continue
+
+            # Otherwise require spatial proximity
+            last_cx = (last_bbox[0] + last_bbox[2]) / 2
+            last_cy = (last_bbox[1] + last_bbox[3]) / 2
+            dist = ((person_cx - last_cx) ** 2 + (person_cy - last_cy) ** 2) ** 0.5
+            if dist < 0.25 and age < best_age:
+                best_age = age
+                best_id = sid
+
+        return best_id
+
+    def get_confirmed_subjects(self, min_frames: int = 30) -> dict[int, _IdentityGallery]:
+        """Return galleries with at least min_frames observations.
+
+        Used to filter out short-lived fragment subjects that appear during
+        camera transitions.
+        """
+        return {
+            sid: g for sid, g in self._galleries.items()
+            if g.total_frames >= min_frames
+        }
 
     def _try_promote(self, gallery: _IdentityGallery) -> None:
         """Try to promote identity status based on gallery consistency."""

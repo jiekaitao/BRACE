@@ -173,11 +173,35 @@ async def process_basketball_game(
         label = gem.classify_activity(frames, bbox, prompt=_BASKETBALL_CLASSIFY_PROMPT)
         analyzer.set_activity_label(cluster_id, label)
 
-    def _detect_jersey_bg(detector: JerseyDetector, subject_id: int, crop: np.ndarray):
+    def _detect_jersey_bg(
+        detector: JerseyDetector,
+        subject_id: int,
+        crop: np.ndarray,
+        resolver_ref: IdentityResolver | None = None,
+        manager_ref: SubjectManager | None = None,
+    ):
         if detector.has_result(subject_id):
             return
         result = detector.detect(crop)
         detector.store_result(subject_id, result)
+
+        # Feed jersey identity back to resolver for cross-cut matching
+        if result.get("jersey_number") is not None and resolver_ref is not None:
+            try:
+                resolver_ref.set_jersey(
+                    subject_id,
+                    result["jersey_number"],
+                    result.get("jersey_color_name", "unknown"),
+                )
+                canonical_id = resolver_ref.merge_by_jersey(subject_id)
+                if canonical_id != subject_id:
+                    # Update detector results: copy to canonical subject
+                    detector.store_result(canonical_id, result)
+                    # Merge analyzers in SubjectManager
+                    if manager_ref is not None:
+                        manager_ref.merge_subject(subject_id, canonical_id)
+            except Exception as e:
+                print(f"[reid-jersey] Error setting jersey for S{subject_id}: {e}", flush=True)
 
     backend.reset()
     frame_idx = 0
@@ -255,13 +279,25 @@ async def process_basketball_game(
                     and jersey_detector.available
                     and subject_id not in jersey_detection_started
                     and subject_frame_counts.get(subject_id, 0) >= _JERSEY_DETECT_FRAME_THRESHOLD
-                    and pr.crop_rgb is not None
-                    and pr.crop_rgb.size > 0
                 ):
-                    jersey_detection_started.add(subject_id)
-                    loop.run_in_executor(
-                        executor, _detect_jersey_bg, jersey_detector, subject_id, pr.crop_rgb
-                    )
+                    # Extract crop from frame if not provided by pipeline
+                    crop = pr.crop_rgb
+                    if crop is None or crop.size == 0:
+                        x1, y1, x2, y2 = pr.bbox_pixel
+                        x1 = max(0, x1)
+                        y1 = max(0, y1)
+                        x2 = min(width, x2)
+                        y2 = min(height, y2)
+                        if x2 > x1 and y2 > y1:
+                            crop = rgb[y1:y2, x1:x2].copy()
+                        else:
+                            crop = None
+                    if crop is not None and crop.size > 0:
+                        jersey_detection_started.add(subject_id)
+                        loop.run_in_executor(
+                            executor, _detect_jersey_bg, jersey_detector, subject_id, crop,
+                            resolver, manager,
+                        )
 
                 # Store periodic snapshots to MongoDB
                 if frame_idx > 0 and frame_idx % _SNAPSHOT_INTERVAL == 0:
@@ -360,8 +396,26 @@ async def process_basketball_game(
                     "rgb": avg_rgb,
                 })
 
+    # Filter out short-lived fragment subjects (< 1 second at 30fps)
+    confirmed_sids: set[int] | None = None
+    if resolver is not None:
+        confirmed = resolver.get_confirmed_subjects(min_frames=30)
+        confirmed_sids = set(confirmed.keys())
+        filtered_count = len(manager.analyzers) - len(
+            [s for s in manager.analyzers if s in confirmed_sids]
+        )
+        if filtered_count > 0:
+            print(
+                f"[game] Filtered {filtered_count} fragment subjects "
+                f"(kept {len(confirmed_sids)} confirmed)",
+                flush=True,
+            )
+
     # Store per-player documents
     for subject_id, analyzer in manager.analyzers.items():
+        # Skip fragment subjects that were never confirmed
+        if confirmed_sids is not None and subject_id not in confirmed_sids:
+            continue
         label = manager.get_label(subject_id)
         summary = analyzer.get_final_summary()
         summary["label"] = label
@@ -400,13 +454,14 @@ async def process_basketball_game(
         )
 
     # Update game as complete
+    final_player_count = len(confirmed_sids) if confirmed_sids is not None else len(manager.analyzers)
     await games_col.update_one(
         {"_id": _to_object_id(game_id)},
         {"$set": {
             "status": "complete",
             "progress": 1.0,
             "frame_idx": frame_idx,
-            "player_count": len(manager.analyzers),
+            "player_count": final_player_count,
             "team_colors": team_colors_summary,
             "updated_at": datetime.now(timezone.utc),
         }},
@@ -416,7 +471,7 @@ async def process_basketball_game(
         msg = {
             "type": "game_complete",
             "game_id": game_id,
-            "player_count": len(manager.analyzers),
+            "player_count": final_player_count,
             "team_colors": team_colors_summary,
         }
         try:

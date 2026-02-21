@@ -12,7 +12,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
-GEMINI_PRO_MODEL = os.environ.get("GEMINI_PRO_MODEL", "gemini-2.5-pro-preview-05-06")
+GEMINI_PRO_MODEL = os.environ.get("GEMINI_PRO_MODEL", "gemini-2.0-flash")
 
 GEMINI_API_KEY = os.environ.get(
     "GOOGLE_GEMINI_API_KEY",

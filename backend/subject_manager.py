@@ -69,6 +69,18 @@ class SubjectManager:
             # Keep label mapping so re-appearing IDs don't reuse labels
         return stale
 
+    def merge_subject(self, from_id: int, to_id: int) -> None:
+        """Merge subject from_id into to_id after jersey-based identity merge.
+
+        If from_id has an analyzer, absorb its data into to_id's analyzer
+        (or discard if to_id has no analyzer). Then remove from_id.
+        """
+        if from_id not in self.analyzers:
+            return
+        if to_id in self.analyzers:
+            self.analyzers[to_id].absorb(self.analyzers[from_id])
+        del self.analyzers[from_id]
+
     def absorb_analyzer(self, target_id: int, source_id: int) -> None:
         """Merge source analyzer into target, then delete source.
 

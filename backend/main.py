@@ -52,6 +52,12 @@ except ImportError:
     chat_router = None
 
 try:
+    from dashboard_api import router as dashboard_router, save_workout_summary as _save_workout
+except ImportError:
+    dashboard_router = None
+    _save_workout = None
+
+try:
     from gemini_classifier import GeminiActivityClassifier
     _GEMINI_AVAILABLE = True
 except ImportError:
@@ -95,6 +101,9 @@ if auth_router is not None:
 
 if chat_router is not None:
     app.include_router(chat_router)
+
+if dashboard_router is not None:
+    app.include_router(dashboard_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -529,8 +538,11 @@ async def create_game(session_id: str):
             connections.remove(ws)
 
     # Prepare re-ID extractors
+    # For basketball games, always provide a re-ID extractor (even DummyExtractor)
+    # so IdentityResolver is created — jersey-based matching needs it.
     reid = _reid_extractor if (not DISABLE_REID and not isinstance(_reid_extractor, DummyExtractor)) else None
     clip_reid = _clip_reid_extractor if not DISABLE_REID else None
+    game_reid = reid if reid is not None else (_reid_extractor or DummyExtractor())
 
     # Start background processing
     task = asyncio.create_task(
@@ -538,7 +550,7 @@ async def create_game(session_id: str):
             game_id=game_id,
             video_path=video_path,
             backend=pipeline,
-            reid_extractor=reid,
+            reid_extractor=game_reid,
             cross_cut_extractor=clip_reid,
             progress_callback=_broadcast_progress,
         )
@@ -783,7 +795,7 @@ async def ws_analyze(websocket: WebSocket):
     if mode == "video":
         await _handle_video_mode(websocket, session_id, cluster_threshold)
     else:
-        await _handle_webcam_mode(websocket, cluster_threshold, risk_modifiers=risk_modifiers, client_type=client_type)
+        await _handle_webcam_mode(websocket, cluster_threshold, risk_modifiers=risk_modifiers, client_type=client_type, user_id=user_id_param)
 
 
 async def _handle_video_mode(
@@ -865,10 +877,11 @@ def _build_vr_response(
 
 async def _handle_webcam_mode(
     websocket: WebSocket, cluster_threshold: float, risk_modifiers: Any = None,
-    client_type: str = "web",
+    client_type: str = "web", user_id: str = "",
 ) -> None:
     """Process live webcam frames with multi-person tracking + pose estimation."""
     session_id = str(uuid.uuid4())  # unique per-session for VectorAI tracking
+    _session_start_time = time.monotonic()
     manager = SubjectManager(fps=30.0, cluster_threshold=cluster_threshold, risk_modifiers=risk_modifiers)
     loop = asyncio.get_event_loop()
     frame_idx = 0
@@ -1277,3 +1290,13 @@ async def _handle_webcam_mode(
 
     except WebSocketDisconnect:
         pass
+    finally:
+        # Save workout summary on disconnect if user is authenticated
+        if user_id and _save_workout is not None:
+            try:
+                duration = time.monotonic() - _session_start_time
+                wid = await _save_workout(user_id, manager, duration)
+                if wid:
+                    print(f"[ws] Saved workout {wid} for user {user_id} ({duration:.0f}s)", flush=True)
+            except Exception as e:
+                print(f"[ws] Failed to save workout: {e}", flush=True)

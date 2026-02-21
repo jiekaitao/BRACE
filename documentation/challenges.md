@@ -16,3 +16,8 @@ The Passthrough Camera API requires specific Android API levels (32+), Vulkan gr
 
 ### Challenge: Latency Budget
 End-to-end latency (camera capture → network → GPU inference → response) is 130-260ms. This is acceptable for bounding box overlays but too high for precise skeleton-to-body alignment. We chose bounding boxes + floating stats panels rather than skeleton overlays for the VR visualization.
+
+## Basketball Game Analysis
+
+### Challenge: Player Identity Fragmentation Across Scene Cuts
+During end-to-end testing of the basketball game processor, a 70-second NBA clip produced 30+ subject IDs for only ~10 actual players. Each camera angle change (scene cut) resets the tracker, creating entirely new track IDs. Without working CLIP-ReID (disabled due to a bug), every scene cut created duplicate subjects for every visible player. We solved this by using jersey numbers as a strong identity signal: after Gemini Pro detects a player's jersey number and team color, this information is fed back into the IdentityResolver. On subsequent scene cuts, players are re-identified by their jersey number + color combination before falling back to appearance/spatial matching. A merge mechanism retroactively combines fragment subjects when jersey detection reveals duplicates, and short-lived fragments (< 1 second) are filtered from final results.
