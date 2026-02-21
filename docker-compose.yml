@@ -6,8 +6,11 @@ x-backend-common: &backend-common
     - GOOGLE_GEMINI_API_KEY=${GOOGLE_GEMINI_API_KEY:-AIzaSyDrfeCSYbecPiJ1aLWUlY9MdGDBA96__W8}
     - MONGODB_URI=mongodb://mongo:27017/brace
     - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+    - VECTORAI_HOST=vectorai
+    - VECTORAI_PORT=5555
   depends_on:
     - mongo
+    - vectorai
   volumes:
     - uploads:/app/uploads
     - ./data/sports_videos:/app/data/sports_videos:ro
@@ -27,6 +30,10 @@ x-backend-common: &backend-common
     - ./backend/chat_agent.py:/app/chat_agent.py:ro
     - ./backend/voice_alerts.py:/app/voice_alerts.py:ro
     - ./backend/device_utils.py:/app/device_utils.py:ro
+    - ./backend/vectorai_store.py:/app/vectorai_store.py:ro
+    - ./backend/vector_activity_classifier.py:/app/vector_activity_classifier.py:ro
+    - ./backend/vector_movement_search.py:/app/vector_movement_search.py:ro
+    - ./backend/vdss_proto:/app/vdss_proto:ro
     - ./brace/core/motion_segments.py:/app/brace/core/motion_segments.py:ro
 
 services:
@@ -47,6 +54,14 @@ services:
     image: mongo:7.0
     volumes:
       - mongodb_data:/data/db
+    restart: unless-stopped
+
+  vectorai:
+    image: williamimoh/actian-vectorai-db:1.0b
+    ports:
+      - "5555:50051"
+    volumes:
+      - vectorai_data:/data
     restart: unless-stopped
 
   # NVIDIA GPU backend (use with: docker compose --profile nvidia up)
@@ -77,3 +92,4 @@ services:
 volumes:
   uploads:
   mongodb_data:
+  vectorai_data:

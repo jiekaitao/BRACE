@@ -92,6 +92,8 @@ class IdentityResolver:
         centroid_distance_threshold: float = 0.15,
         centroid_max_age: int = 30,
         single_person_threshold: float = 0.30,
+        vectorai_store=None,
+        vectorai_person_threshold: float = 0.85,
     ):
         self._extractor = extractor
         self._match_threshold = match_threshold
@@ -113,6 +115,10 @@ class IdentityResolver:
         self._cross_cut_extractor = cross_cut_extractor
         self._post_cut_max_frames = post_cut_frames
 
+        # VectorAI cross-session person re-ID
+        self._vectorai_store = vectorai_store
+        self._vectorai_person_threshold = vectorai_person_threshold
+
         # track_id -> subject_id
         self._track_to_subject: dict[int, int] = {}
 
@@ -131,6 +137,9 @@ class IdentityResolver:
         # Cross-cut re-identification state
         self._in_post_cut_mode = False
         self._post_cut_frames_remaining = 0
+
+        # Session ID for VectorAI storage
+        self._session_id = ""
 
     def on_scene_cut(self) -> None:
         """Handle a detected scene cut.
@@ -364,6 +373,27 @@ class IdentityResolver:
                     )
 
                 if subject_id is None:
+                    # Try VectorAI cross-session lookup before creating new subject
+                    vectorai_person_id = None
+                    if (
+                        self._vectorai_store is not None
+                        and emb is not None
+                        and np.linalg.norm(emb) >= 1e-8
+                    ):
+                        try:
+                            match = self._vectorai_store.find_person(
+                                emb, threshold=self._vectorai_person_threshold
+                            )
+                            if match is not None:
+                                vectorai_person_id = match["person_id"]
+                                print(
+                                    f"[vectorai-reid] Cross-session match: "
+                                    f"{vectorai_person_id} (score={match['score']:.3f})",
+                                    flush=True,
+                                )
+                        except Exception as exc:
+                            print(f"[vectorai-reid] lookup failed: {exc}", flush=True)
+
                     subject_id = self._next_subject_id
                     self._next_subject_id += 1
                     gallery = _IdentityGallery(
@@ -378,6 +408,21 @@ class IdentityResolver:
                     limbs = compute_limb_lengths(landmarks)
                     if limbs is not None:
                         gallery.proportions.add(limbs)
+
+                    # Store embedding in VectorAI for future cross-session matching
+                    if (
+                        self._vectorai_store is not None
+                        and emb is not None
+                        and np.linalg.norm(emb) >= 1e-8
+                    ):
+                        try:
+                            self._vectorai_store.store_person_embedding(
+                                emb,
+                                person_id=f"S{subject_id}",
+                                session_id=self._session_id,
+                            )
+                        except Exception as exc:
+                            print(f"[vectorai-reid] store failed: {exc}", flush=True)
                 else:
                     gallery = self._galleries[subject_id]
                     if emb is not None and np.linalg.norm(emb) > 0:

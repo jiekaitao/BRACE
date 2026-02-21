@@ -27,4 +27,7 @@ cython>=3.0.0
 # MongoDB async/sync drivers
 motor>=3.3.0
 pymongo>=4.6.0
+# Actian VectorAI DB gRPC client (optional — graceful degradation if unavailable)
+grpcio>=1.60.0
+grpcio-tools>=1.60.0
 # NOTE: tensorrt and pynvml excluded — NVIDIA-only dependencies

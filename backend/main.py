@@ -57,6 +57,18 @@ try:
 except ImportError:
     _GEMINI_AVAILABLE = False
 
+# VectorAI integration (optional — graceful degradation if unavailable)
+_vectorai_store = None
+_vector_classifier = None
+_movement_search = None
+try:
+    from vectorai_store import VectorAIStore
+    from vector_activity_classifier import VectorActivityClassifier
+    from vector_movement_search import MovementSearchEngine
+    _VECTORAI_SDK_AVAILABLE = True
+except ImportError:
+    _VECTORAI_SDK_AVAILABLE = False
+
 try:
     import pynvml
     pynvml.nvmlInit()
@@ -151,6 +163,22 @@ def load_models():
 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     print(f"[startup] Upload dir: {UPLOAD_DIR}", flush=True)
+
+    # Initialize VectorAI store (optional — graceful degradation)
+    global _vectorai_store, _vector_classifier, _movement_search
+    if _VECTORAI_SDK_AVAILABLE:
+        try:
+            _vectorai_store = VectorAIStore()
+            if _vectorai_store.health_check():
+                _vector_classifier = VectorActivityClassifier(_vectorai_store)
+                _movement_search = MovementSearchEngine(_vectorai_store)
+                print("[startup] VectorAI store, classifier, and search engine initialized", flush=True)
+            else:
+                print("[startup] VectorAI not reachable — disabled", flush=True)
+                _vectorai_store = None
+        except Exception as e:
+            print(f"[startup] VectorAI init failed ({e}) — disabled", flush=True)
+            _vectorai_store = None
 
     # Ensure MongoDB indexes for auth/chat/workout collections
     try:
@@ -270,6 +298,126 @@ def demo_video_thumbnail(filename: str):
     return Response(content=buf.tobytes(), media_type="image/jpeg")
 
 
+# ---------------------------------------------------------------------------
+# VectorAI REST API Endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/vectorai/health")
+def vectorai_health():
+    """Return VectorAI connection status."""
+    if _vectorai_store is not None and _vectorai_store.health_check():
+        return {"status": "ok", "host": _vectorai_store._host, "port": _vectorai_store._port}
+    return {"status": "unavailable"}
+
+
+@app.get("/api/movements/similar")
+def movements_similar(
+    session_id: str = "",
+    person_id: str = "",
+    activity_label: str = "",
+    top_k: int = 5,
+):
+    """Find similar movements from past sessions.
+
+    Query params:
+        session_id: (optional) filter to a specific session
+        person_id: (optional) filter to a specific person
+        activity_label: (optional) filter to a specific activity
+        top_k: number of results (default 5)
+    """
+    if _movement_search is None or _vectorai_store is None:
+        return {"error": "VectorAI not available", "results": []}
+
+    # Build filters
+    filters = {}
+    if person_id:
+        filters["person_id"] = person_id
+    if activity_label:
+        filters["activity_label"] = activity_label
+    if session_id:
+        filters["session_id"] = session_id
+
+    # For a general query without a specific vector, we return recent segments
+    # A proper query requires a feature vector — this endpoint is best used
+    # with a segment_idx param that references stored features
+    return {"error": "Provide a feature vector via POST", "results": []}
+
+
+@app.post("/api/movements/similar")
+async def movements_similar_post(request: dict):
+    """Find similar movements by posting a feature vector.
+
+    Body: {"features": [float, ...], "top_k": int, "filters": {...}}
+    """
+    if _movement_search is None:
+        return {"error": "VectorAI not available", "results": []}
+
+    try:
+        features = np.array(request.get("features", []), dtype=np.float32)
+        if features.shape[0] == 0:
+            return {"error": "Empty features vector", "results": []}
+        top_k = request.get("top_k", 5)
+        filters = request.get("filters")
+        results = _movement_search.find_similar(features, top_k=top_k, filters=filters)
+        return {"results": results}
+    except Exception as e:
+        return {"error": str(e), "results": []}
+
+
+@app.get("/api/person/{person_id}/history")
+def person_history(person_id: str):
+    """Return cross-session history for a person."""
+    if _vectorai_store is None:
+        return {"error": "VectorAI not available", "history": []}
+
+    # Query motion_segments filtered by person_id
+    # We use a zero vector as a neutral query to get all segments for this person
+    try:
+        dummy_query = np.zeros(42, dtype=np.float32)
+        results = _vectorai_store.find_similar_movements(
+            dummy_query, top_k=50, filters={"person_id": person_id}
+        )
+        return {
+            "person_id": person_id,
+            "history": [
+                {
+                    "activity_label": r["metadata"].get("activity_label", "unknown"),
+                    "session_id": r["metadata"].get("session_id", ""),
+                    "risk_score": r["metadata"].get("risk_score", 0.0),
+                    "timestamp": r["metadata"].get("timestamp", 0.0),
+                }
+                for r in results
+            ],
+        }
+    except Exception as e:
+        return {"error": str(e), "history": []}
+
+
+@app.post("/api/activity-templates")
+async def seed_activity_templates(request: dict):
+    """Seed activity templates from labeled data.
+
+    Body: {"templates": [{"features": [float, ...], "activity_name": str}, ...]}
+    """
+    if _vector_classifier is None:
+        return {"error": "VectorAI not available", "seeded": 0}
+
+    try:
+        templates = request.get("templates", [])
+        labeled = []
+        for t in templates:
+            labeled.append({
+                "features": np.array(t["features"], dtype=np.float32),
+                "activity_name": t["activity_name"],
+                "source": t.get("source", "api_upload"),
+            })
+        _vector_classifier.seed_templates(labeled)
+        return {"seeded": len(labeled)}
+    except Exception as e:
+        return {"error": str(e), "seeded": 0}
+
+
 def _gpu_decode_jpeg(jpeg_bytes: bytes) -> np.ndarray:
     """Decode JPEG bytes on GPU via nvJPEG, return RGB numpy array."""
     tensor = torch.frombuffer(jpeg_bytes, dtype=torch.uint8)
@@ -385,6 +533,7 @@ async def _handle_webcam_mode(
     websocket: WebSocket, cluster_threshold: float, risk_modifiers: Any = None,
 ) -> None:
     """Process live webcam frames with multi-person tracking + pose estimation."""
+    session_id = str(uuid.uuid4())  # unique per-session for VectorAI tracking
     manager = SubjectManager(fps=30.0, cluster_threshold=cluster_threshold, risk_modifiers=risk_modifiers)
     loop = asyncio.get_event_loop()
     frame_idx = 0
@@ -395,7 +544,9 @@ async def _handle_webcam_mode(
         and _reid_extractor is not None
         and not isinstance(_reid_extractor, DummyExtractor)
     )
-    resolver = IdentityResolver(_reid_extractor) if use_reid else None
+    resolver = IdentityResolver(
+        _reid_extractor, vectorai_store=_vectorai_store,
+    ) if use_reid else None
 
     # Gemini activity classification
     gemini: GeminiActivityClassifier | None = None
@@ -414,6 +565,32 @@ async def _handle_webcam_mode(
         return frame_buffer.get(idx)
 
     def _classify_cluster_webcam(analyzer, cluster_id: int, gem: GeminiActivityClassifier):
+        # Try vector classification first (fast, no API call)
+        if _vector_classifier is not None and len(analyzer.features_list) > 0:
+            try:
+                # Use the mean feature vector of frames in this cluster
+                cluster_indices = analyzer.get_cluster_frame_indices(cluster_id)
+                if cluster_indices:
+                    cluster_feats = [
+                        analyzer.features_list[vi]
+                        for vi in range(len(analyzer.features_list))
+                        if analyzer.valid_indices[vi] in set(cluster_indices)
+                        and vi < len(analyzer.features_list)
+                    ]
+                    if cluster_feats:
+                        mean_feat = np.mean(np.stack(cluster_feats), axis=0)
+                        vec_label = _vector_classifier.classify(mean_feat)
+                        if vec_label is not None:
+                            print(
+                                f"[vector_classify] cluster {cluster_id} -> '{vec_label}'",
+                                flush=True,
+                            )
+                            analyzer.set_activity_label(cluster_id, vec_label)
+                            return
+            except Exception as e:
+                print(f"[vector_classify] fallback to Gemini: {e}", flush=True)
+
+        # Fall back to Gemini vision classification
         indices = analyzer.get_cluster_frame_indices(cluster_id)
         if not indices:
             print(f"[gemini] cluster {cluster_id}: no frame indices, skipping", flush=True)
@@ -436,6 +613,23 @@ async def _handle_webcam_mode(
         label = gem.classify_activity(frames, bbox)
         print(f"[gemini] cluster {cluster_id} -> '{label}' ({len(frames)} frames, {len(indices)} indices)", flush=True)
         analyzer.set_activity_label(cluster_id, label)
+
+        # Store Gemini result as a template for future vector classification
+        if _vectorai_store is not None and label != "unknown":
+            try:
+                cluster_feats = [
+                    analyzer.features_list[vi]
+                    for vi in range(len(analyzer.features_list))
+                    if vi < len(analyzer.valid_indices)
+                    and analyzer.valid_indices[vi] in set(indices)
+                ]
+                if cluster_feats:
+                    mean_feat = np.mean(np.stack(cluster_feats), axis=0)
+                    _vectorai_store.store_activity_template(
+                        mean_feat, activity_name=label, source="gemini",
+                    )
+            except Exception as e:
+                print(f"[vectorai] template store failed: {e}", flush=True)
 
     try:
         while True:
@@ -599,6 +793,27 @@ async def _handle_webcam_mode(
                                     analyzer, cid, gemini,
                                 )
                             )
+
+                    # Store motion segments in VectorAI (background, non-blocking)
+                    if _movement_search is not None and len(analyzer.features_list) > 0:
+                        try:
+                            latest_feat = analyzer.features_list[-1]
+                            activity = analyzer._activity_labels.get(
+                                response.get("cluster_id", -1), "unknown"
+                            )
+                            _movement_search.store_segment(
+                                latest_feat,
+                                metadata={
+                                    "activity_label": activity,
+                                    "session_id": session_id if session_id else "webcam",
+                                    "person_id": str(subject_id),
+                                    "risk_score": response.get("quality", {}).get(
+                                        "composite_fatigue", 0.0
+                                    ),
+                                },
+                            )
+                        except Exception as e:
+                            print(f"[vectorai] segment store failed: {e}", flush=True)
 
                 # Handle UMAP embedding (non-blocking: refit runs in background)
                 embedding_update = None
