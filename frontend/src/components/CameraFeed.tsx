@@ -17,7 +17,7 @@ export default function CameraFeed({ onVideoReady, mirrored = true }: CameraFeed
     async function startCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user", frameRate: { ideal: 240 } },
           audio: false,
         });
 

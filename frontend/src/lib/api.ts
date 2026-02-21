@@ -11,12 +11,10 @@ export function getApiBase(): string {
     return process.env.NEXT_PUBLIC_API_URL;
   }
   if (typeof window === "undefined") {
-    return "http://localhost:8000";
+    return "http://localhost:8001";
   }
-  const isSecure = window.location.protocol === "https:";
-  const port = isSecure ? 8443 : 8001;
-  const protocol = isSecure ? "https:" : "http:";
-  return `${protocol}//${window.location.hostname}:${port}`;
+  // Client-side: Proxy through Next.js rewrite to bypass Mixed Content limits
+  return "/api/backend";
 }
 
 /**
@@ -31,8 +29,7 @@ export function getWsBase(): string {
   if (typeof window === "undefined") {
     return "ws://localhost:8001";
   }
-  const isSecure = window.location.protocol === "https:";
-  const port = isSecure ? 8443 : 8001;
-  const protocol = isSecure ? "wss:" : "ws:";
-  return `${protocol}//${window.location.hostname}:${port}`;
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  // Client-side: Proxy through Next.js rewrite to bypass mixed content limits
+  return `${protocol}//${window.location.host}/api/backend`;
 }

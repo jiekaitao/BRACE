@@ -8,6 +8,7 @@ consistency analysis, and streams multi-subject results back to the frontend.
 import asyncio
 import base64
 import json
+import math
 import os
 import time
 import uuid
@@ -24,6 +25,11 @@ from fastapi.responses import FileResponse, Response
 
 import struct
 
+try:
+    import webrtc_api
+    _WEBRTC_AVAILABLE = True
+except ImportError:
+    _WEBRTC_AVAILABLE = False
 # GPU JPEG decode via nvJPEG (torchvision + CUDA)
 _GPU_JPEG_AVAILABLE = False
 try:
@@ -77,7 +83,7 @@ except Exception:
     _nvml_available = False
 
 SCRIPT_DIR = Path(__file__).parent
-_default_upload = "/app/uploads" if Path("/app").exists() else str(SCRIPT_DIR / "uploads")
+_default_upload = "/app/uploads" if Path("/app").exists() else str(SCRIPT_DIR.parent / "data" / "uploads")
 _default_demo = "/app/data/sports_videos" if Path("/app/data").exists() else str(SCRIPT_DIR.parent / "data" / "sports_videos")
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", _default_upload))
 DEMO_VIDEOS_DIR = Path(os.environ.get("DEMO_VIDEOS_DIR", _default_demo))
@@ -90,6 +96,9 @@ if auth_router is not None:
 if chat_router is not None:
     app.include_router(chat_router)
 
+if _WEBRTC_AVAILABLE:
+    app.include_router(webrtc_api.router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -99,8 +108,8 @@ app.add_middleware(
 
 _executor = ThreadPoolExecutor(max_workers=8)
 
-# Only send joints used by frontend skeleton renderer (14 feature + hips/shoulders = 14 unique)
-_SEND_INDICES = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28, 31, 32]
+# Send head points (0,1,2,3,4) + torso/limbs for frontend skeleton renderer
+_SEND_INDICES = [0, 1, 2, 3, 4, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28, 31, 32]
 
 pipeline: PoseBackend | None = None
 _reid_extractor: EmbeddingExtractor | None = None
@@ -160,6 +169,20 @@ def load_models():
             print(f"[startup] CLIP-ReID unavailable ({e}), cross-cut matching disabled", flush=True)
     else:
         print("[startup] Re-ID disabled (DISABLE_REID=1)", flush=True)
+
+    if _WEBRTC_AVAILABLE:
+        webrtc_api.inject_globals({
+            "pipeline": pipeline,
+            "executor": _executor,
+            "SubjectManager": SubjectManager,
+            "IdentityResolver": IdentityResolver,
+            "DummyExtractor": DummyExtractor,
+            "reid_extractor": _reid_extractor,
+            "DISABLE_REID": DISABLE_REID,
+            "GEMINI_AVAILABLE": _GEMINI_AVAILABLE,
+            "GeminiActivityClassifier": GeminiActivityClassifier if _GEMINI_AVAILABLE else None,
+            "SEND_INDICES": _SEND_INDICES,
+        })
 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     print(f"[startup] Upload dir: {UPLOAD_DIR}", flush=True)
@@ -506,6 +529,8 @@ async def ws_analyze(websocket: WebSocket):
     session_id = websocket.query_params.get("session_id", "")
     cluster_threshold = float(websocket.query_params.get("cluster_threshold", "2.0"))
     client_type = websocket.query_params.get("client", "web")  # "web" or "vr"
+    fps_param = websocket.query_params.get("fps")
+    target_fps = float(fps_param) if fps_param else 30.0
     user_id_param = websocket.query_params.get("user_id", "")
 
     await websocket.accept()
@@ -535,7 +560,7 @@ async def ws_analyze(websocket: WebSocket):
     if mode == "video":
         await _handle_video_mode(websocket, session_id, cluster_threshold)
     else:
-        await _handle_webcam_mode(websocket, cluster_threshold, risk_modifiers=risk_modifiers, client_type=client_type)
+        await _handle_webcam_mode(websocket, cluster_threshold, target_fps, risk_modifiers, client_type)
 
 
 async def _handle_video_mode(
@@ -616,12 +641,12 @@ def _build_vr_response(
 
 
 async def _handle_webcam_mode(
-    websocket: WebSocket, cluster_threshold: float, risk_modifiers: Any = None,
-    client_type: str = "web",
+    websocket: WebSocket, cluster_threshold: float, target_fps: float,
+    risk_modifiers: Any = None, client_type: str = "web",
 ) -> None:
     """Process live webcam frames with multi-person tracking + pose estimation."""
     session_id = str(uuid.uuid4())  # unique per-session for VectorAI tracking
-    manager = SubjectManager(fps=30.0, cluster_threshold=cluster_threshold, risk_modifiers=risk_modifiers)
+    manager = SubjectManager(fps=target_fps, cluster_threshold=cluster_threshold, risk_modifiers=risk_modifiers)
     loop = asyncio.get_event_loop()
     frame_idx = 0
     vr_selected_subject: int | None = None  # VR client's selected subject
@@ -648,6 +673,16 @@ async def _handle_webcam_mode(
     # Track video_time to detect loop boundaries (video_time jumps backward)
     prev_video_time: float = 0.0
     loop_cooldown: int = 0  # frames to skip loop detection after a loop
+
+    # Equipment tracking state
+    equipment_state = {
+        "box": None,
+        "momentum": 0.0,
+        "held_by_id": None,
+        "last_box": None,
+        "last_time": 0.0,
+        "pending": False,
+    }
 
     def _get_buffered_frame(idx: int) -> np.ndarray | None:
         return frame_buffer.get(idx)
@@ -870,6 +905,58 @@ async def _handle_webcam_mode(
                     "y2": round(nb[3], 4),
                 }
 
+                # Equipment Tracking Background Task
+                if gemini is not None and gemini.available and not equipment_state["pending"]:
+                    if frame_idx % 15 == 0:  # Check every ~500ms
+                        equipment_state["pending"] = True
+                        
+                        def _track_equipment(f=rgb, t=video_time, w_w=w, h_h=h, snapshot_subjects=list(results)):
+                            box = gemini.locate_object(f, "american football")
+                            
+                            if box is not None:
+                                ymin, xmin, ymax, xmax = box
+                                cx = (xmin + xmax) / 2.0
+                                cy = (ymin + ymax) / 2.0
+                                
+                                # Calculate momentum if we have a previous box
+                                momentum = 0.0
+                                if equipment_state["last_box"] is not None and equipment_state["last_time"] > 0:
+                                    dt = t - equipment_state["last_time"]
+                                    if dt > 0 and dt < 2.0: # avoid huge gaps
+                                        lymin, lxmin, lymax, lxmax = equipment_state["last_box"]
+                                        lcx = (lxmin + lxmax) / 2.0
+                                        lcy = (lymin + lymax) / 2.0
+                                        # Distance in normalized space (0-1)
+                                        dist = math.sqrt((cx - lcx)**2 + (cy - lcy)**2)
+                                        # Momentum arbitrarily scaled for UI display (0-100)
+                                        momentum = min(100.0, (dist / dt) * 50.0)
+                                        
+                                # Determine possession (closest player)
+                                held_by = None
+                                min_dist = 0.15  # Max normalized distance to consider "held"
+                                for spr in snapshot_subjects:
+                                    pxx1, pyy1, pxx2, pyy2 = spr.bbox_normalized
+                                    pcx = (pxx1 + pxx2) / 2.0
+                                    pcy = (pyy1 + pyy2) / 2.0
+                                    p_dist = math.sqrt((cx - pcx)**2 + (cy - pcy)**2)
+                                    if p_dist < min_dist:
+                                        min_dist = p_dist
+                                        held_by = str(spr.track_id)
+                                        
+                                equipment_state["last_box"] = box
+                                equipment_state["last_time"] = t
+                                equipment_state["box"] = box
+                                equipment_state["momentum"] = momentum
+                                equipment_state["held_by_id"] = held_by
+                            else:
+                                equipment_state["box"] = None
+                                equipment_state["held_by_id"] = None
+                                equipment_state["momentum"] = 0.0
+                                
+                            equipment_state["pending"] = False
+
+                        asyncio.ensure_future(loop.run_in_executor(_executor, _track_equipment))
+
                 # Run re-analysis if needed
                 if analyzer.needs_reanalysis():
                     await loop.run_in_executor(None, analyzer.run_analysis)
@@ -997,6 +1084,12 @@ async def _handle_webcam_mode(
                 "total_ms": round((t_analyze - t0 + t_decode) * 1000, 1),
             }
 
+            equipment_data = {
+                "box": equipment_state["box"],
+                "momentum": round(equipment_state["momentum"], 2),
+                "held_by_id": equipment_state["held_by_id"],
+            }
+
             if client_type == "vr":
                 await websocket.send_json(_build_vr_response(
                     subjects_data, active_ids, frame_idx, video_time,
@@ -1008,6 +1101,7 @@ async def _handle_webcam_mode(
                     "video_time": video_time,
                     "subjects": subjects_data,
                     "active_track_ids": active_ids,
+                    "equipment": equipment_data,
                     "timing": timing_dict,
                     "gemini_stats": gemini.get_stats() if gemini is not None else None,
                 })
@@ -1029,3 +1123,7 @@ async def _handle_webcam_mode(
 
     except WebSocketDisconnect:
         pass
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)

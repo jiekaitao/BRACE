@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
-import type { SubjectState, BBox } from "@/lib/types";
+import type { SubjectState, BBox, EquipmentTracking } from "@/lib/types";
 import { MP_BONES, FEATURE_INDICES, RISK_JOINT_TO_MP } from "@/lib/skeleton";
 import { PHASE_COLORS, SKELETON_COLOR, JOINT_DOT_COLOR, riskColor, getSubjectColor } from "@/lib/colors";
 
 interface AnalysisCanvasProps {
   subjectsRef: React.MutableRefObject<Map<number, SubjectState>>;
   selectedSubjectRef: React.MutableRefObject<number | null>;
+  equipmentRef?: React.MutableRefObject<EquipmentTracking | undefined>;
   onSelectSubject?: (trackId: number) => void;
   mirrored?: boolean;
   showRisks?: boolean;
@@ -16,6 +17,7 @@ interface AnalysisCanvasProps {
 export default function AnalysisCanvas({
   subjectsRef,
   selectedSubjectRef,
+  equipmentRef,
   onSelectSubject,
   mirrored = false,
   showRisks = false,
@@ -335,6 +337,47 @@ export default function AnalysisCanvas({
         if (!subjects.has(id)) delete committedLabelRef.current[id];
       }
 
+      // Draw equipment (football)
+      const eq = equipmentRef?.current;
+      if (eq?.box) {
+        const [ymin, xmin, ymax, xmax] = eq.box;
+        const bx = toX(mirrored ? 1 - xmax : xmin);
+        const by = toY(ymin);
+        const bw = toX(mirrored ? 1 - xmin : xmax) - bx;
+        const bh = toY(ymax) - by;
+
+        ctx.strokeStyle = "#F5A623"; // Orange for football
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 6]);
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.setLineDash([]);
+
+        // Draw momentum/holder label
+        const momentumText = `${Math.round(eq.momentum)} Mmt`;
+        let holderText = "";
+        if (eq.held_by_id) {
+          const heldId = Number(eq.held_by_id);
+          const holderSubject = subjectsRef.current.get(heldId);
+          if (holderSubject) {
+            holderText = ` (${holderSubject.label})`;
+          } else {
+            holderText = ` (ID: ${eq.held_by_id})`;
+          }
+        }
+
+        const text = `Football: ${momentumText}${holderText}`;
+        ctx.font = "bold 12px -apple-system, BlinkMacSystemFont, sans-serif";
+        const tm = ctx.measureText(text);
+
+        ctx.fillStyle = "#F5A623";
+        ctx.beginPath();
+        ctx.roundRect(bx, by - 24, tm.width + 12, 20, 4);
+        ctx.fill();
+
+        ctx.fillStyle = "#FFF";
+        ctx.fillText(text, bx + 6, by - 9);
+      }
+
       ctx.globalAlpha = 1.0;
       animRef.current = requestAnimationFrame(draw);
     }
@@ -342,7 +385,7 @@ export default function AnalysisCanvas({
     animRef.current = requestAnimationFrame(draw);
 
     return () => cancelAnimationFrame(animRef.current);
-  }, [subjectsRef, selectedSubjectRef, mirrored]);
+  }, [subjectsRef, selectedSubjectRef, equipmentRef, mirrored]);
 
   return (
     <canvas
