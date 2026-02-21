@@ -1,0 +1,42 @@
+FROM python:3.12-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libgl1 libglib2.0-0 curl git gcc g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install PyTorch CPU-only (no CUDA)
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Install brace package (core library)
+COPY setup.py ./
+COPY brace/ ./brace/
+RUN pip install --no-cache-dir -e .
+
+# Install backend dependencies (CPU-compatible version)
+COPY backend/requirements.cpu.txt ./backend_requirements.txt
+RUN pip install --no-cache-dir -r backend_requirements.txt
+
+# Install onnxruntime CPU (not GPU)
+RUN pip install --no-cache-dir onnxruntime
+
+# Try to install simple-romp for SMPL estimation (optional, may fail)
+RUN pip install --no-cache-dir simple-romp 2>/dev/null || \
+    echo "[docker] simple-romp install failed (optional), SMPL estimation will be disabled"
+
+# Download YOLO11-pose models (PyTorch only, no TensorRT export)
+RUN python -c "from ultralytics import YOLO; YOLO('yolo11m-pose.pt'); YOLO('yolo11x-pose.pt')" || \
+    echo "[docker] YOLO model download failed (will retry at startup)"
+
+# Pre-download CLIP model for cross-cut re-ID (speeds up first inference)
+RUN python -c "from transformers import CLIPModel, CLIPProcessor; CLIPModel.from_pretrained('openai/clip-vit-base-patch16'); CLIPProcessor.from_pretrained('openai/clip-vit-base-patch16'); print('[docker] CLIP model pre-downloaded')" || echo "[docker] CLIP pre-download failed (optional)"
+
+# Copy backend source
+COPY backend/ ./
+
+RUN mkdir -p /app/uploads
+
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

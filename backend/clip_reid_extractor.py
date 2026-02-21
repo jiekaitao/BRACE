@@ -22,10 +22,13 @@ class CLIPReIDExtractor(EmbeddingExtractor):
 
     EMBEDDING_DIM = 768
 
-    def __init__(self, device: str = "cuda", model_name: str = "ViT-B/16"):
+    def __init__(self, device: str | None = None, model_name: str = "ViT-B/16"):
         import torch
 
-        self._device = device if torch.cuda.is_available() else "cpu"
+        if device is None:
+            from device_utils import get_best_device
+            device = get_best_device()
+        self._device = device
         self._model_name = model_name
         self._model = None
         self._preprocess = None

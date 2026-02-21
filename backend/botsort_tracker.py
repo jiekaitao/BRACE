@@ -67,15 +67,17 @@ class BoTSortTracker:
         match_thresh: float = 0.8,
         frame_rate: int = 30,
     ):
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self._half = torch.cuda.is_available()
+        from device_utils import get_best_device
+        _best = get_best_device()
+        self._device = torch.device(_best)
+        self._half = (_best == "cuda")
         self.conf_threshold = conf_threshold
         self.min_bbox_area_ratio = min_bbox_area_ratio
 
         # YOLO for detection + keypoints only (no built-in tracker)
         self.model = YOLO(model_name)
-        if self._half:
-            self.model.to("cuda")
+        if _best != "cpu":
+            self.model.to(_best)
 
         # Store tracker init kwargs for reset()
         self._tracker_kwargs = dict(

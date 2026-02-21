@@ -28,12 +28,14 @@ class MultiPersonTracker:
         conf_threshold: float = 0.3,
         min_bbox_area_ratio: float = 0.01,
     ):
+        from device_utils import get_best_device
+        _best = get_best_device()
         self.model = YOLO(model_name)
         self._is_engine = model_name.endswith(".engine")
-        self._use_half = torch.cuda.is_available()
-        # TensorRT engines are already on GPU with FP16 baked in — skip .to("cuda")
-        if self._use_half and not self._is_engine:
-            self.model.to("cuda")
+        self._use_half = (_best == "cuda")
+        # TensorRT engines are already on GPU with FP16 baked in — skip .to()
+        if not self._is_engine and _best != "cpu":
+            self.model.to(_best)
         self.conf_threshold = conf_threshold
         self.min_bbox_area_ratio = min_bbox_area_ratio
 

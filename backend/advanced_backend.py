@@ -63,8 +63,11 @@ class AdvancedPoseBackend(PoseBackend):
         conf_threshold: float = 0.3,
         use_botsort: bool = True,
         use_rtmw3d: bool = True,
-        device: str = "cuda",
+        device: str | None = None,
     ):
+        if device is None:
+            from device_utils import get_best_device
+            device = get_best_device()
         self._device = device
         self._use_botsort = False
 

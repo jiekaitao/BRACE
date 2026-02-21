@@ -6,20 +6,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Docker (primary development)
 ```bash
-# Start frontend:3000 + backend:8001 (GPU)
-docker compose up -d
-docker compose restart backend          # Restart backend (picks up bind-mounted .py changes)
-docker compose build frontend           # Rebuild frontend (required for TS/TSX changes)
-docker compose up -d frontend           # Recreate frontend container after rebuild
+# Auto-detect hardware and start (recommended):
+./run.sh                                # auto-detects Mac/NVIDIA, starts in background
+./run.sh --dev                          # dev mode with hot-reload
+./run.sh down                           # stop everything
+./run.sh logs                           # tail logs
 
-# Dev: full source bind-mount with uvicorn --reload
-docker compose -f docker-compose.dev.yml up -d
+# Manual profile selection:
+docker compose --profile cpu up -d      # Mac / CPU-only
+docker compose --profile nvidia up -d   # NVIDIA GPU
 
-docker compose logs -f backend          # Tail backend logs
-docker compose down                     # Stop everything
+# Restart backend (picks up bind-mounted .py changes):
+docker compose --profile cpu restart backend-cpu      # Mac
+docker compose --profile nvidia restart backend       # NVIDIA
+
+# Rebuild frontend (required for TS/TSX changes):
+docker compose build frontend && docker compose --profile cpu up -d frontend
+
+docker compose --profile cpu logs -f backend-cpu      # Tail backend logs (Mac)
+docker compose --profile nvidia logs -f backend       # Tail backend logs (NVIDIA)
 ```
 
-**Hot-reload in production compose**: These files are bind-mounted and take effect on `docker compose restart backend`: `main.py`, `streaming_analyzer.py`, `subject_manager.py`, `gemini_classifier.py`, `tensorrt_utils.py`, `identity_resolver.py`, `multi_person_tracker.py`, `botsort_tracker.py`, `movement_quality.py`, `movement_guidelines.py`, `motion_segments.py`. All other backend changes require `docker compose build backend`.
+**Profiles**: The system uses Docker Compose profiles to auto-detect hardware:
+- `cpu` — Mac / non-GPU machines. Uses `Dockerfile.cpu` (Python 3.12 slim, CPU PyTorch, onnxruntime CPU).
+- `nvidia` — NVIDIA GPU machines. Uses `Dockerfile` (CUDA 12.8, TensorRT FP16, onnxruntime-gpu).
+
+The `run.sh` script auto-detects which profile to use based on the OS and GPU availability.
+
+**Hot-reload in production compose**: These files are bind-mounted and take effect on `docker compose restart backend` (or `backend-cpu` on Mac): `main.py`, `streaming_analyzer.py`, `subject_manager.py`, `gemini_classifier.py`, `tensorrt_utils.py`, `identity_resolver.py`, `multi_person_tracker.py`, `botsort_tracker.py`, `movement_quality.py`, `movement_guidelines.py`, `motion_segments.py`. All other backend changes require rebuilding the backend image. New files (e.g. `device_utils.py`) require a rebuild.
 
 **Frontend changes always require rebuild** (`docker compose build frontend && docker compose up -d frontend`). Do NOT pass `NEXT_PUBLIC_WS_URL` or `NEXT_PUBLIC_API_URL` as Docker build args — the frontend auto-detects the correct protocol and port at runtime via `frontend/src/lib/api.ts`.
 

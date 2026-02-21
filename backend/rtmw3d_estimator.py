@@ -44,7 +44,7 @@ class RTMW3DEstimator:
 
     def __init__(
         self,
-        device: str = "cuda",
+        device: str | None = None,
         backend: str = "onnxruntime",
     ):
         if not _RTMLIB_AVAILABLE:
@@ -53,6 +53,12 @@ class RTMW3DEstimator:
                 "pip install rtmlib onnxruntime-gpu"
             )
 
+        if device is None:
+            import torch
+            if torch.cuda.is_available():
+                device = "cuda"
+            else:
+                device = "cpu"
         self._device = device
         self._backend = backend
         self._model = None

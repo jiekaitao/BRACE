@@ -39,6 +39,7 @@ from video_processor import process_video
 from identity_resolver import IdentityResolver
 from embedding_extractor import EmbeddingExtractor, DummyExtractor
 from tensorrt_utils import ensure_tensorrt_engine
+from device_utils import get_best_device
 
 try:
     from auth import router as auth_router
@@ -64,8 +65,10 @@ except Exception:
     _nvml_available = False
 
 SCRIPT_DIR = Path(__file__).parent
-UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/app/uploads"))
-DEMO_VIDEOS_DIR = Path(os.environ.get("DEMO_VIDEOS_DIR", "/app/data/sports_videos"))
+_default_upload = "/app/uploads" if Path("/app").exists() else str(SCRIPT_DIR / "uploads")
+_default_demo = "/app/data/sports_videos" if Path("/app/data").exists() else str(SCRIPT_DIR.parent / "data" / "sports_videos")
+UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", _default_upload))
+DEMO_VIDEOS_DIR = Path(os.environ.get("DEMO_VIDEOS_DIR", _default_demo))
 
 app = FastAPI(title="BRACE API")
 
@@ -101,6 +104,9 @@ PIPELINE_BACKEND = os.environ.get("PIPELINE_BACKEND", "legacy")
 @app.on_event("startup")
 def load_models():
     global pipeline, _reid_extractor, _clip_reid_extractor
+
+    device = get_best_device()
+    print(f"[startup] Detected compute device: {device}", flush=True)
 
     # Pre-convert YOLO model to TensorRT FP16 engine (one-time, ~2-5 min)
     yolo_model = ensure_tensorrt_engine(

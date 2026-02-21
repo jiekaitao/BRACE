@@ -1,0 +1,30 @@
+opencv-python-headless>=4.8.0
+numpy>=1.24
+scipy>=1.10
+scikit-learn>=1.3
+fastdtw>=0.3.4
+fastapi
+uvicorn[standard]
+python-multipart
+ultralytics>=8.0.0
+boxmot>=11.0.0
+lap>=0.5.0
+umap-learn>=0.5.0
+torchreid>=0.2.5
+gdown>=4.7.0
+tensorboard>=2.14
+smplx>=0.1.0
+# RTMW3D 3D pose estimation via ONNX (no mmpose/mmcv needed)
+rtmlib>=0.0.14
+# onnxruntime CPU installed separately in Dockerfile (not GPU)
+# CLIP-based cross-cut re-identification (HuggingFace fallback)
+transformers>=4.30.0
+Pillow>=9.0.0
+# Gemini Vision API for activity classification
+google-genai>=1.0.0
+# Optional: simple-romp for SMPL estimation
+cython>=3.0.0
+# MongoDB async/sync drivers
+motor>=3.3.0
+pymongo>=4.6.0
+# NOTE: tensorrt and pynvml excluded — NVIDIA-only dependencies
