@@ -18,7 +18,7 @@ from typing import Any
 import cv2
 import numpy as np
 import torch
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 
@@ -296,6 +296,37 @@ def demo_video_thumbnail(filename: str):
     thumb = cv2.resize(frame, (new_w, new_h))
     _, buf = cv2.imencode(".jpg", thumb, [cv2.IMWRITE_JPEG_QUALITY, 75])
     return Response(content=buf.tobytes(), media_type="image/jpeg")
+
+
+# ---------------------------------------------------------------------------
+# ElevenLabs TTS Endpoint
+# ---------------------------------------------------------------------------
+
+_tts_client = None  # lazy-init on first request
+
+
+@app.get("/api/tts")
+async def tts_endpoint(text: str = Query("")):
+    """Synthesize speech via ElevenLabs. Returns audio/mpeg MP3."""
+    global _tts_client
+    if not text or not text.strip():
+        return Response(status_code=400, content="text parameter required")
+    if _tts_client is None:
+        try:
+            from tts_elevenlabs import ElevenLabsTTS
+        except ImportError:
+            from backend.tts_elevenlabs import ElevenLabsTTS
+        _tts_client = ElevenLabsTTS()
+    if not _tts_client.available:
+        return Response(status_code=503, content="TTS not configured")
+    audio = await asyncio.to_thread(_tts_client.synthesize, text.strip())
+    if audio is None:
+        return Response(status_code=502, content="TTS synthesis failed")
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 # ---------------------------------------------------------------------------

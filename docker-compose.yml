@@ -6,6 +6,7 @@ x-backend-common: &backend-common
     - GOOGLE_GEMINI_API_KEY=${GOOGLE_GEMINI_API_KEY:-AIzaSyDrfeCSYbecPiJ1aLWUlY9MdGDBA96__W8}
     - MONGODB_URI=mongodb://mongo:27017/brace
     - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+    - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-}
     - VECTORAI_HOST=vectorai
     - VECTORAI_PORT=50051
   depends_on:
@@ -29,6 +30,7 @@ x-backend-common: &backend-common
     - ./backend/risk_profile.py:/app/risk_profile.py:ro
     - ./backend/chat_agent.py:/app/chat_agent.py:ro
     - ./backend/voice_alerts.py:/app/voice_alerts.py:ro
+    - ./backend/tts_elevenlabs.py:/app/tts_elevenlabs.py:ro
     - ./backend/device_utils.py:/app/device_utils.py:ro
     - ./backend/vectorai_store.py:/app/vectorai_store.py:ro
     - ./backend/vector_activity_classifier.py:/app/vector_activity_classifier.py:ro
