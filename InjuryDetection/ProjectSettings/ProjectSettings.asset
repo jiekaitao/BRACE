@@ -581,7 +581,7 @@ PlayerSettings:
   enableInternalProfiler: 0
   logObjCUncaughtExceptions: 1
   enableCrashReportAPI: 0
-  cameraUsageDescription: 
+  cameraUsageDescription: Camera access for motion capture
   locationUsageDescription: 
   microphoneUsageDescription: Required for camera access
   bluetoothUsageDescription: 
