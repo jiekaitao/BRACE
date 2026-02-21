@@ -208,6 +208,80 @@ class GeminiActivityClassifier:
 
         return label
 
+    def locate_object(
+        self,
+        frame: np.ndarray,
+        object_name: str,
+    ) -> list[float] | None:
+        """Locate an object in the frame and return its normalized bounding box.
+
+        Args:
+            frame: RGB image (H, W, 3).
+            object_name: The name of the object to locate (e.g., "american football").
+
+        Returns:
+            A list [ymin, xmin, ymax, xmax] in normalized coordinates [0, 1], or None on failure.
+        """
+        self._ensure_model()
+        if self._model is None:
+            return None
+
+        # Rate limit
+        with self._lock:
+            now = time.monotonic()
+            wait = _MIN_CALL_INTERVAL - (now - self._last_call_time)
+            if wait > 0:
+                time.sleep(wait)
+            self._last_call_time = time.monotonic()
+
+        prompt = (
+            f"Return the 2D bounding box [ymin, xmin, ymax, xmax] of the {object_name} "
+            f"in this image. Return ONLY the JSON-style array of four numbers between 0 and 1000. "
+            f"If the object is not present, return an empty array []."
+        )
+
+        try:
+            from PIL import Image
+            import io
+            import json
+
+            # Use a slightly higher resolution for spatial tasks
+            jpeg_bytes = _encode_frame_jpeg(frame, max_dim=768)
+            img = Image.open(io.BytesIO(jpeg_bytes))
+
+            # Specifically request JSON output for the bounding box
+            response = self._model.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[img, prompt],
+                config={"response_mime_type": "application/json"}
+            )
+            with self._lock:
+                self._api_call_count += 1
+            
+            text = response.text.strip()
+            
+            # Try to parse the array
+            try:
+                box = json.loads(text)
+                if isinstance(box, list):
+                    if len(box) == 4 and all(isinstance(x, (int, float)) for x in box):
+                        # Convert from [0, 1000] to [0, 1] normalized
+                        norm_box = [max(0.0, min(1.0, float(x) / 1000.0)) for x in box]
+                        print(f"[gemini] located {object_name} at: {norm_box}", flush=True)
+                        return norm_box
+                    elif len(box) == 0:
+                        # explicitly not found
+                        return None
+            except json.JSONDecodeError:
+                pass
+            
+            print(f"[gemini] failed to parse location for {object_name}: {response.text}", flush=True)
+            return None
+
+        except Exception as e:
+            print(f"[gemini] localization failed: {e}", flush=True)
+            return None
+
     def get_representative_frames(
         self,
         frame_indices: list[int],

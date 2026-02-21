@@ -100,6 +100,8 @@ export interface FrameQuality {
   injury_risks?: InjuryRisk[];
   fatigue_timeline?: FatigueTimeline;
   active_guideline?: ActiveGuideline;
+  concussion_rating?: number;
+  fatigue_rating?: number;
 }
 
 /** Per-frame response from the backend WebSocket (legacy single-subject). */
@@ -171,12 +173,20 @@ export interface GeminiStats {
   estimated_cost_usd: number;
 }
 
+/** Equipment tracking data from Gemini ER. */
+export interface EquipmentTracking {
+  box: [number, number, number, number] | null;
+  momentum: number;
+  held_by_id: string | null;
+}
+
 /** Multi-subject frame response from backend. */
 export interface MultiSubjectFrameResponse {
   frame_index: number;
   video_time?: number;
   subjects: Record<string, SubjectData>;
   active_track_ids: number[];
+  equipment?: EquipmentTracking;
   gemini_stats?: GeminiStats;
 }
 

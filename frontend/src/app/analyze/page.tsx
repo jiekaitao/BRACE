@@ -139,6 +139,7 @@ function AnalyzeContent() {
     stopCapture,
     uploadVideo,
     debugStatsRef,
+    equipmentRef,
   } = useAnalysisWebSocket(active, wsMode);
 
   const { enabled: voiceEnabled, toggle: toggleVoice, speak } = useVoiceCoaching();
@@ -230,7 +231,7 @@ function AnalyzeContent() {
     if (demoVideoRef.current) {
       startCapture(demoVideoRef.current);
       // Explicitly play — autoPlay attribute alone can fail in some contexts
-      demoVideoRef.current.play().catch(() => {});
+      demoVideoRef.current.play().catch(() => { });
     }
   }, [startCapture]);
 
@@ -278,9 +279,8 @@ function AnalyzeContent() {
         </Link>
         <div className="flex items-center gap-2">
           <div
-            className={`w-2.5 h-2.5 rounded-full ${
-              !connected ? "bg-[#EA2B2B]" : replaying ? "bg-[#F5A623]" : "bg-[#58CC02]"
-            }`}
+            className={`w-2.5 h-2.5 rounded-full ${!connected ? "bg-[#EA2B2B]" : replaying ? "bg-[#F5A623]" : "bg-[#58CC02]"
+              }`}
           />
           <span className="text-xs font-bold text-[#777777]">
             {!connected ? "Offline" : replaying ? "Replaying" : "Live"}
@@ -348,11 +348,11 @@ function AnalyzeContent() {
                 </>
               )}
 
-              {/* Canvas overlay — never mirrored for demo */}
               {active && (
                 <AnalysisCanvas
                   subjectsRef={subjectsRef}
                   selectedSubjectRef={selectedSubjectRef}
+                  equipmentRef={equipmentRef}
                   onSelectSubject={selectSubject}
                   mirrored={mode === "webcam" && !isDemo}
                   showRisks={showDebug}

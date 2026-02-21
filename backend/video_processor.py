@@ -125,6 +125,16 @@ async def process_video(
     # Reset backend tracker for this video
     backend.reset()
 
+    # Equipment tracking state
+    equipment_state = {
+        "box": None,
+        "momentum": 0.0,
+        "held_by_id": None,
+        "last_box": None,
+        "last_time": 0.0,
+        "pending": False,
+    }
+
     frame_idx = 0
 
     try:
@@ -221,6 +231,59 @@ async def process_video(
                             loop.run_in_executor(
                                 executor, _classify_cluster_bg, analyzer, cid, gemini
                             )
+                
+                # Equipment Tracking Background Task
+                if gemini is not None and gemini.available and not equipment_state["pending"]:
+                    if frame_idx % 15 == 0:  # Check approx twice a second
+                        equipment_state["pending"] = True
+                        
+                        video_time = frame_idx / fps
+                        
+                        def _track_equipment(f=rgb, t=video_time, w_w=width, h_h=height, snapshot_subjects=list(results)):
+                            box = gemini.locate_object(f, "american football")
+                            
+                            if box is not None:
+                                import math
+                                ymin, xmin, ymax, xmax = box
+                                cx = (xmin + xmax) / 2.0
+                                cy = (ymin + ymax) / 2.0
+                                
+                                # Calculate momentum if we have a previous box
+                                momentum = 0.0
+                                if equipment_state["last_box"] is not None and equipment_state["last_time"] > 0:
+                                    dt = t - equipment_state["last_time"]
+                                    if dt > 0 and dt < 2.0:
+                                        lymin, lxmin, lymax, lxmax = equipment_state["last_box"]
+                                        lcx = (lxmin + lxmax) / 2.0
+                                        lcy = (lymin + lymax) / 2.0
+                                        dist = math.sqrt((cx - lcx)**2 + (cy - lcy)**2)
+                                        momentum = min(100.0, (dist / dt) * 50.0)
+                                        
+                                # Determine possession (closest player)
+                                held_by = None
+                                min_dist = 0.15
+                                for spr in snapshot_subjects:
+                                    pxx1, pyy1, pxx2, pyy2 = spr.bbox_normalized
+                                    pcx = (pxx1 + pxx2) / 2.0
+                                    pcy = (pyy1 + pyy2) / 2.0
+                                    p_dist = math.sqrt((cx - pcx)**2 + (cy - pcy)**2)
+                                    if p_dist < min_dist:
+                                        min_dist = p_dist
+                                        held_by = str(spr.track_id)
+                                        
+                                equipment_state["last_box"] = box
+                                equipment_state["last_time"] = t
+                                equipment_state["box"] = box
+                                equipment_state["momentum"] = momentum
+                                equipment_state["held_by_id"] = held_by
+                            else:
+                                equipment_state["box"] = None
+                                equipment_state["held_by_id"] = None
+                                equipment_state["momentum"] = 0.0
+                                
+                            equipment_state["pending"] = False
+
+                        asyncio.ensure_future(loop.run_in_executor(executor, _track_equipment))
 
                 # Handle UMAP embedding
                 embedding_update = None
@@ -262,6 +325,11 @@ async def process_video(
                 "frame_index": frame_idx,
                 "subjects": subjects_data,
                 "active_track_ids": active_ids,
+                "equipment": {
+                    "box": equipment_state["box"],
+                    "momentum": round(equipment_state["momentum"], 2),
+                    "held_by_id": equipment_state["held_by_id"],
+                },
             })
 
             # Send progress every 10 frames

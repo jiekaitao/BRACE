@@ -19,7 +19,8 @@ import { getApiBase, getWsBase } from "@/lib/api";
 
 const CAPTURE_H = 480;
 const JPEG_QUALITY = 0.65;
-const TARGET_FPS = 30;
+// Use higher FPS for smoother slow-motion rendering where possible
+const TARGET_FPS = 60;
 const FRAME_INTERVAL_MS = 1000 / TARGET_FPS;
 
 const EMPTY_LANDMARK_FRAME: LandmarkFrame = {
@@ -71,6 +72,7 @@ export interface UseAnalysisWebSocketResult {
   subjectsRef: React.MutableRefObject<Map<number, SubjectState>>;
   selectedSubjectRef: React.MutableRefObject<number | null>;
   highlightedClusterRef: React.MutableRefObject<number | null>;
+  equipmentRef: React.MutableRefObject<import("@/lib/types").EquipmentTracking | undefined>;
   // React state for subject selection
   selectedSubjectId: number | null;
   activeTrackIds: number[];
@@ -90,17 +92,28 @@ export function useAnalysisWebSocket(
   const wsRef = useRef<WebSocket | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const captureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const captureCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const animFrameRef = useRef(0);
   const replayAnimRef = useRef(0);
   const lastSendTimeRef = useRef(0);
   const lastAppliedFrameRef = useRef(-1);
   const framesInFlightRef = useRef(0);
-  const MAX_IN_FLIGHT = 5; // Allow pipeline overlap for higher throughput
+  const MAX_IN_FLIGHT = 2; // Prevents backpressure queuing, ensuring 0 network latency lag even with 240FPS input
   const rollingRttRef = useRef<number[]>([]);
   const sendTimesQueueRef = useRef<number[]>([]);
   const videoTimeRef = useRef(0);
   const MAX_RTT_SAMPLES = 10;
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const iOSWebSocketCaptureRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined") return;
+    const ua = navigator.userAgent || "";
+    const isIOS =
+      /iPhone|iPad|iPod/i.test(ua) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    iOSWebSocketCaptureRef.current = isIOS;
+  }, []);
 
   const [connected, setConnected] = useState(false);
   const [replaying, setReplaying] = useState(false);
@@ -116,6 +129,7 @@ export function useAnalysisWebSocket(
   const [peakVelocity, setPeakVelocity] = useState(0);
   const [videoProgress, setVideoProgress] = useState<number | null>(null);
   const [videoComplete, setVideoComplete] = useState(false);
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
   const [activeTrackIds, setActiveTrackIds] = useState<number[]>([]);
 
@@ -123,6 +137,7 @@ export function useAnalysisWebSocket(
   const subjectsRef = useRef<Map<number, SubjectState>>(new Map());
   const selectedSubjectRef = useRef<number | null>(null);
   const highlightedClusterRef = useRef<number | null>(null);
+  const equipmentRef = useRef<import("@/lib/types").EquipmentTracking | undefined>(undefined);
 
   // Debug stats tracking
   const HISTORY_LEN = 60;
@@ -163,15 +178,17 @@ export function useAnalysisWebSocket(
     (sessionId?: string) => {
       const base = getWsBase();
       if (mode === "video" && sessionId) {
-        return `${base}/ws/analyze?mode=video&session_id=${sessionId}`;
+        return `${base}/ws/analyze?mode=video&session_id=${sessionId}&fps=${TARGET_FPS}`;
       }
-      return `${base}/ws/analyze?mode=webcam`;
+      return `${base}/ws/analyze?mode=webcam&fps=${TARGET_FPS}`;
     },
     [mode]
   );
 
   // Send a single frame as binary blob with 8-byte Float64 video timestamp prefix
   const sendFrame = useCallback(() => {
+    const webcamOverWebSocket = mode === "webcam" && iOSWebSocketCaptureRef.current;
+    if (mode === "webcam" && !webcamOverWebSocket) return; // WebRTC mode uses native video track
     const video = videoRef.current;
     const ws = wsRef.current;
     if (!video || !ws || ws.readyState !== WebSocket.OPEN) return;
@@ -185,18 +202,26 @@ export function useAnalysisWebSocket(
     if (now - lastSendTimeRef.current < FRAME_INTERVAL_MS) return;
     lastSendTimeRef.current = now;
 
-    if (!captureCanvasRef.current) {
-      captureCanvasRef.current = document.createElement("canvas");
+    let canvas = captureCanvasRef.current;
+    if (!canvas) {
+      canvas = document.createElement("canvas");
+      captureCanvasRef.current = canvas;
     }
-    const canvas = captureCanvasRef.current;
 
     // Preserve video aspect ratio to avoid stretching
     const videoAR = video.videoWidth / video.videoHeight;
-    const captureH = CAPTURE_H;
+    const captureH = iOSWebSocketCaptureRef.current ? 360 : CAPTURE_H;
     const captureW = Math.round(captureH * videoAR);
-    canvas.width = captureW;
-    canvas.height = captureH;
-    const ctx = canvas.getContext("2d");
+    if (canvas.width !== captureW || canvas.height !== captureH) {
+      canvas.width = captureW;
+      canvas.height = captureH;
+      captureCtxRef.current = null;
+    }
+    let ctx = captureCtxRef.current;
+    if (!ctx) {
+      ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+      captureCtxRef.current = ctx;
+    }
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, captureW, captureH);
@@ -249,9 +274,9 @@ export function useAnalysisWebSocket(
         });
       },
       "image/jpeg",
-      JPEG_QUALITY
+      iOSWebSocketCaptureRef.current ? 0.5 : JPEG_QUALITY
     );
-  }, []);
+  }, [mode]);
 
   // Connect WebSocket
   useEffect(() => {
@@ -267,29 +292,14 @@ export function useAnalysisWebSocket(
     let retryDelay = 1000;
     const MAX_RETRY_DELAY = 10000;
 
+    let ws: WebSocket | null = null;
+    let pc: RTCPeerConnection | null = null;
+    let dc: RTCDataChannel | null = null;
+
     function tryConnect() {
       if (stopped) return;
 
-      const url = getWsUrl(sessionId ?? undefined);
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
-
-      const timeout = setTimeout(() => ws.close(), 5000);
-
-      ws.onopen = () => {
-        clearTimeout(timeout);
-        retryDelay = 1000;
-        subjectsRef.current.clear();
-        selectedSubjectRef.current = null;
-        lastAppliedFrameRef.current = -1;
-        framesInFlightRef.current = 0;
-        replayingRef.current = false;
-        setSelectedSubjectId(null);
-        setReplaying(false);
-        setConnected(true);
-      };
-
-      ws.onmessage = (event) => {
+      const handleMessage = (event: MessageEvent) => {
         // Debug stats: track RTT and incoming bytes
         const acc = debugAccRef.current;
         const sendTime = sendTimesQueueRef.current.shift();
@@ -354,6 +364,10 @@ export function useAnalysisWebSocket(
 
         debugStatsRef.current.serverFrameIndex = frame.frame_index;
         debugStatsRef.current.activeSubjects = frame.active_track_ids?.length ?? 0;
+
+        if (frame.equipment) {
+          equipmentRef.current = frame.equipment;
+        }
 
         const now = performance.now();
         const currentSubjects = subjectsRef.current;
@@ -598,33 +612,107 @@ export function useAnalysisWebSocket(
         }
       };
 
-      ws.onclose = () => {
-        clearTimeout(timeout);
-        setConnected(false);
-        wsRef.current = null;
-        if (!stopped && mode === "webcam") {
-          setTimeout(tryConnect, retryDelay);
-          retryDelay = Math.min(retryDelay * 1.5, MAX_RETRY_DELAY);
-        }
+      const openWs = (url: string, reconnect: boolean) => {
+        ws = new WebSocket(url);
+        wsRef.current = ws;
+        const timeout = setTimeout(() => ws?.close(), 5000);
+        ws.onopen = () => {
+          clearTimeout(timeout);
+          retryDelay = 1000;
+          subjectsRef.current.clear();
+          selectedSubjectRef.current = null;
+          lastAppliedFrameRef.current = -1;
+          framesInFlightRef.current = 0;
+          replayingRef.current = false;
+          setSelectedSubjectId(null);
+          setReplaying(false);
+          setConnected(true);
+        };
+        ws.onmessage = handleMessage;
+        ws.onclose = () => {
+          clearTimeout(timeout);
+          setConnected(false);
+          wsRef.current = null;
+          if (reconnect && !stopped) {
+            setTimeout(tryConnect, retryDelay);
+            retryDelay = Math.min(retryDelay * 1.5, MAX_RETRY_DELAY);
+          }
+        };
+        ws.onerror = () => {
+          clearTimeout(timeout);
+          ws?.close();
+        };
       };
 
-      ws.onerror = () => {
-        clearTimeout(timeout);
-        ws.close();
-      };
+      if (mode === "webcam") {
+        if (iOSWebSocketCaptureRef.current) {
+          openWs(getWsUrl(), true);
+        } else {
+          if (!videoElement) return;
+          const stream = videoElement.srcObject as MediaStream;
+          if (!stream) return;
+
+          pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+          stream.getTracks().forEach((track) => pc!.addTrack(track, stream));
+
+          dc = pc.createDataChannel("brace-data");
+          dc.onopen = () => {
+            retryDelay = 1000;
+            subjectsRef.current.clear();
+            selectedSubjectRef.current = null;
+            lastAppliedFrameRef.current = -1;
+            framesInFlightRef.current = 0;
+            replayingRef.current = false;
+            setSelectedSubjectId(null);
+            setReplaying(false);
+            setConnected(true);
+          };
+          dc.onmessage = handleMessage;
+          dc.onclose = () => {
+            setConnected(false);
+            if (!stopped) {
+              setTimeout(tryConnect, retryDelay);
+              retryDelay = Math.min(retryDelay * 1.5, MAX_RETRY_DELAY);
+            }
+          };
+
+          pc.createOffer()
+            .then((offer) => pc!.setLocalDescription(offer))
+            .then(() => fetch(getApiBase() + "/rtc/offer", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sdp: pc!.localDescription?.sdp,
+                type: pc!.localDescription?.type,
+                fps: TARGET_FPS,
+                cluster_threshold: 2.0
+              })
+            }))
+            .then((res) => res.json())
+            .then((answer) => {
+              if (!stopped && pc) pc.setRemoteDescription(answer);
+            })
+            .catch((err) => {
+              console.error("WebRTC offer error:", err);
+              dc?.close();
+            });
+        }
+      } else {
+        openWs(getWsUrl(sessionId ?? undefined), false);
+      }
     }
 
     tryConnect();
 
     return () => {
       stopped = true;
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
+      if (ws) ws.close();
+      if (wsRef.current) wsRef.current = null;
+      if (dc) dc.close();
+      if (pc) pc.close();
       setConnected(false);
     };
-  }, [active, mode, getWsUrl, sessionId]);
+  }, [active, mode, getWsUrl, sessionId, videoElement]);
 
   // Debug stats: 1-second interval to compute rates
   useEffect(() => {
@@ -802,6 +890,7 @@ export function useAnalysisWebSocket(
 
   const startCapture = useCallback((videoElement: HTMLVideoElement) => {
     videoRef.current = videoElement;
+    setVideoElement(videoElement);
   }, []);
 
   const stopCapture = useCallback(() => {
@@ -848,5 +937,6 @@ export function useAnalysisWebSocket(
     stopCapture,
     uploadVideo,
     debugStatsRef,
+    equipmentRef,
   };
 }

@@ -13,7 +13,7 @@ export function getApiBase(): string {
     return process.env.NEXT_PUBLIC_API_URL;
   }
   if (typeof window === "undefined") {
-    return "http://localhost:8000";
+    return "http://localhost:8001";
   }
   if (window.location.hostname === "braceml.com") {
     return "https://ws.braceml.com";

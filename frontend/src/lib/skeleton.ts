@@ -1,6 +1,10 @@
 /** MediaPipe bone connections for skeleton drawing. */
 export const MP_BONES: [number, number][] = [
-  [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], // torso + arms
+  // Head
+  [0, 1], [1, 2], [1, 3], [2, 4],                    // eyes, ears, nose
+  [0, 11], [0, 12],                                  // nose to shoulders
+  // Torso & Limbs
+  [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],  // torso + arms
   [11, 23], [12, 24], [23, 24],                      // torso to hips
   [23, 25], [25, 27], [27, 31],                      // left leg
   [24, 26], [26, 28], [28, 32],                      // right leg
@@ -9,11 +13,16 @@ export const MP_BONES: [number, number][] = [
   [27, 29], [28, 30],                                // heels
 ];
 
-/** 14 feature joint indices used for SRP analysis. */
-export const FEATURE_INDICES = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28, 31, 32];
+/** 19 feature joint indices used for SRP analysis and Frontend rendering. */
+export const FEATURE_INDICES = [0, 1, 2, 3, 4, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28, 31, 32];
 
 /** Feature joint names. */
 export const FEATURE_NAMES: Record<number, string> = {
+  0: "Nose",
+  1: "L Eye",
+  2: "R Eye",
+  3: "L Ear",
+  4: "R Ear",
   11: "L Shoulder",
   12: "R Shoulder",
   13: "L Elbow",

@@ -1,0 +1,44 @@
+name: BraceTripodDemo
+options:
+  minimumXcodeGenVersion: 2.40.0
+  createIntermediateGroups: true
+targets:
+  BraceTripodDemo:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: Sources
+    info:
+      path: Sources/App/Info.plist
+      properties:
+        CFBundleDisplayName: BRACE Sideline
+        UILaunchScreen: {}
+        NSCameraUsageDescription: BRACE needs camera access to capture 240 FPS sideline clips.
+        NSMicrophoneUsageDescription: BRACE uses audio for whistle-based play ending in tripod mode.
+        NSLocalNetworkUsageDescription: BRACE connects to your backend over local/Tailscale network.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        UIApplicationSupportsIndirectInputEvents: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.brace.tripoddemo
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        TARGETED_DEVICE_FAMILY: "1,2"
+    scheme:
+      testTargets:
+        - BraceTripodDemoTests
+  BraceTripodDemoTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: Tests
+    dependencies:
+      - target: BraceTripodDemo
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.brace.tripoddemo.tests
+        GENERATE_INFOPLIST_FILE: YES

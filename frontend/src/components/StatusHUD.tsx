@@ -87,20 +87,20 @@ export default function StatusHUD({
                 style={
                   isSelected
                     ? {
-                        backgroundColor: color,
-                        color: "#FFFFFF",
-                        boxShadow: `0 2px 8px ${color}40`,
-                        borderStyle: isDashed ? "dashed" : "solid",
-                        borderWidth: "2px",
-                        borderColor: "transparent",
-                      }
+                      backgroundColor: color,
+                      color: "#FFFFFF",
+                      boxShadow: `0 2px 8px ${color}40`,
+                      borderStyle: isDashed ? "dashed" : "solid",
+                      borderWidth: "2px",
+                      borderColor: "transparent",
+                    }
                     : {
-                        backgroundColor: "#FFFFFF",
-                        color: "#777777",
-                        borderStyle: isDashed ? "dashed" : "solid",
-                        borderWidth: "2px",
-                        borderColor: color,
-                      }
+                      backgroundColor: "#FFFFFF",
+                      color: "#777777",
+                      borderStyle: isDashed ? "dashed" : "solid",
+                      borderWidth: "2px",
+                      borderColor: color,
+                    }
                 }
               >
                 {isConfirmed && (
@@ -121,6 +121,41 @@ export default function StatusHUD({
         </div>
       )}
 
+      {/* Concussion indicator */}
+      {fatigueIndex >= 0 && ( /* show whenever tracking is on */
+        <Card>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-[#3C3C3C] uppercase tracking-[0.03em]">
+                Concussion Risk
+              </span>
+              <span
+                className="text-xs font-bold px-2 py-0.5 rounded-full text-white"
+                style={{
+                  backgroundColor:
+                    (() => {
+                      const sel = selectedSubjectRef.current;
+                      if (sel === null) return "#CCCCCC";
+                      const s = subjectsRef.current.get(sel);
+                      const cr = s?.quality?.concussion_rating ?? 0;
+                      if (cr > 70) return "#EA2B2B";
+                      if (cr > 40) return "#F5A623";
+                      return "#58CC02";
+                    })()
+                }}
+              >
+                {(() => {
+                  const sel = selectedSubjectRef.current;
+                  if (sel === null) return "—";
+                  const s = subjectsRef.current.get(sel);
+                  return `${Math.round(s?.quality?.concussion_rating ?? 0)}`;
+                })()}
+              </span>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Fatigue indicator */}
       {peakVelocity > 0 && (
         <Card>
@@ -133,27 +168,47 @@ export default function StatusHUD({
                 className="text-xs font-bold px-2 py-0.5 rounded-full text-white"
                 style={{
                   backgroundColor:
-                    fatigueIndex > 0.6
-                      ? "#EA2B2B"
-                      : fatigueIndex > 0.3
-                        ? "#F5A623"
-                        : "#58CC02",
+                    (() => {
+                      const sel = selectedSubjectRef.current;
+                      if (sel === null) return "#CCCCCC";
+                      const s = subjectsRef.current.get(sel);
+                      const fr = s?.quality?.fatigue_rating ?? (fatigueIndex * 100);
+                      if (fr > 60) return "#EA2B2B";
+                      if (fr > 30) return "#F5A623";
+                      return "#58CC02";
+                    })()
                 }}
               >
-                {Math.round(fatigueIndex * 100)}%
+                {(() => {
+                  const sel = selectedSubjectRef.current;
+                  if (sel === null) return "—";
+                  const s = subjectsRef.current.get(sel);
+                  const fr = s?.quality?.fatigue_rating ?? (fatigueIndex * 100);
+                  return `${Math.round(fr)}%`;
+                })()}
               </span>
             </div>
             <div className="w-full h-2 rounded-full bg-[#E5E5E5] overflow-hidden">
               <div
                 className="h-full rounded-full transition-all duration-300"
                 style={{
-                  width: `${Math.min(fatigueIndex * 100, 100)}%`,
+                  width: `${(() => {
+                    const sel = selectedSubjectRef.current;
+                    if (sel === null) return 0;
+                    const s = subjectsRef.current.get(sel);
+                    const fr = s?.quality?.fatigue_rating ?? (fatigueIndex * 100);
+                    return Math.min(fr, 100);
+                  })()}%`,
                   backgroundColor:
-                    fatigueIndex > 0.6
-                      ? "#EA2B2B"
-                      : fatigueIndex > 0.3
-                        ? "#F5A623"
-                        : "#58CC02",
+                    (() => {
+                      const sel = selectedSubjectRef.current;
+                      if (sel === null) return "#CCCCCC";
+                      const s = subjectsRef.current.get(sel);
+                      const fr = s?.quality?.fatigue_rating ?? (fatigueIndex * 100);
+                      if (fr > 60) return "#EA2B2B";
+                      if (fr > 30) return "#F5A623";
+                      return "#58CC02";
+                    })()
                 }}
               />
             </div>

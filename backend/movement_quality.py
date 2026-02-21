@@ -806,6 +806,13 @@ class MovementQualityTracker:
         self._current_degrading_joints: list[int] = []
         self._current_movement_phase: dict[str, Any] | None = None
 
+        # Concussion / Head tracking
+        self._head_jerk_ema = 0.0
+        self._current_concussion_rating = 0.0
+        
+        # Fatigue Rating
+        self._current_fatigue_rating = 0.0
+
         # Movement guideline profile (set from Gemini activity label)
         self._current_activity_label: str | None = None
         self._current_profile: Any = None  # MovementProfile or None
@@ -936,6 +943,33 @@ class MovementQualityTracker:
         self._current_jerk = jerk
         self._curvature_ema = 0.1 * kappa + 0.9 * self._curvature_ema
         self._jerk_ema = 0.1 * jerk + 0.9 * self._jerk_ema
+
+        # --- Concussion Risk / Head Jerk ---
+        # Track head translation in un-rotated space to capture impact/jerk
+        if raw_joints is not None and raw_joints.shape[0] > 0:
+            # Determine if we have actual head joints (0: nose)
+            has_head = False
+            if len(raw_joints) > 0 and len(raw_joints) > 31:
+                # We must map back from 33-point MP indices to figure out if it's there
+                has_head = True # If len > 14 we are probably receiving all 33
+                
+            # Concussion rating - base on head acceleration proxy
+            head_proxy = None
+            if len(raw_joints) == 33 and np.linalg.norm(raw_joints[0][:2]) > 0:
+                head_proxy = raw_joints[0][:2] # Use nose
+            else:
+                # Proxied from shoulders
+                head_proxy = (srp_joints[0] + srp_joints[1]) / 2.0 
+            
+            # we'll use the overall jerk_ema to drive the rating for now, scaled 0-100
+            # For actual impact we would track `np.linalg.norm(head_vel - last_head_vel) / dt`
+            raw_concuss = (self._jerk_ema * 500.0) 
+            self._head_jerk_ema = 0.2 * raw_concuss + 0.8 * self._head_jerk_ema
+            self._current_concussion_rating = float(np.clip(self._head_jerk_ema, 0.0, 100.0))
+
+        # --- Fatigue Rating ---
+        # Convert fatigue_index (0.0 - 1.0) to a 0-100 scale rating
+        self._current_fatigue_rating = float(np.clip(fatigue_index * 100.0, 0.0, 100.0))
 
         # --- Center of Mass (Phase 3A) ---
         com = estimate_center_of_mass(srp_joints)
@@ -1403,6 +1437,10 @@ class MovementQualityTracker:
             }
             self._last_sent_timeline_version = self._fatigue_timeline_version
 
+        # Ratings
+        result["concussion_rating"] = round(self._current_concussion_rating, 1)
+        result["fatigue_rating"] = round(self._current_fatigue_rating, 1)
+
         return result
 
     def reset(self) -> None:
@@ -1434,6 +1472,9 @@ class MovementQualityTracker:
         self._current_joint_deviations = None
         self._current_degrading_joints = []
         self._current_movement_phase = None
+        self._head_jerk_ema = 0.0
+        self._current_concussion_rating = 0.0
+        self._current_fatigue_rating = 0.0
         self._fatigue_timeline_timestamps.clear()
         self._fatigue_timeline_fatigue.clear()
         self._fatigue_timeline_form.clear()

@@ -102,6 +102,7 @@ def make_workout_summary_doc(
     clusters: dict,
     injury_risks: list,
     fatigue_score: float | None = None,
+    concussion_rating: float | None = None,
     video_name: str | None = None,
 ) -> dict:
     """Create a workout summary document."""
@@ -112,5 +113,6 @@ def make_workout_summary_doc(
         "clusters": clusters,
         "injury_risks": injury_risks,
         "fatigue_score": fatigue_score,
+        "concussion_rating": concussion_rating,
         "created_at": datetime.now(timezone.utc),
     }
