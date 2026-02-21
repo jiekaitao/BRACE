@@ -590,7 +590,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 806bcecfe0046408a97c87ce031cda9c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BraceWebSocket
-  serverUrl: ws://192.168.1.100:8001/ws/analyze?mode=webcam&client=vr
+  serverUrl: wss://ws.braceml.com/ws/analyze?mode=webcam&client=vr
   maxFps: 30
   maxInFlight: 5
 --- !u!114 &649485640
@@ -605,7 +605,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ff386ecd759bb4af1bf63af28bb5b28c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FrameCapture
-  braceWs: {fileID: 0}
+  braceWs: {fileID: 649485639}
   targetHeight: 480
   jpegQuality: 65
 --- !u!4 &649485641
