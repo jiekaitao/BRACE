@@ -20,7 +20,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
-          <UserBadge />
+          <header className="flex items-center justify-end px-5 py-3 border-b border-[#E5E5E5]">
+            <UserBadge />
+          </header>
           {children}
         </AuthProvider>
       </body>

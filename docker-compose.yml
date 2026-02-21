@@ -1,3 +1,43 @@
+x-backend-common: &backend-common
+  ports:
+    - "8001:8000"
+  environment:
+    - PIPELINE_BACKEND=${PIPELINE_BACKEND:-legacy}
+    - GOOGLE_GEMINI_API_KEY=${GOOGLE_GEMINI_API_KEY:-AIzaSyDrfeCSYbecPiJ1aLWUlY9MdGDBA96__W8}
+    - MONGODB_URI=mongodb://mongo:27017/brace
+    - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+    - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-}
+    - VECTORAI_HOST=vectorai
+    - VECTORAI_PORT=50051
+  depends_on:
+    - mongo
+    - vectorai
+  volumes:
+    - uploads:/app/uploads
+    - ./data/sports_videos:/app/data/sports_videos:ro
+    - ./backend/main.py:/app/main.py:ro
+    - ./backend/streaming_analyzer.py:/app/streaming_analyzer.py:ro
+    - ./backend/subject_manager.py:/app/subject_manager.py:ro
+    - ./backend/gemini_classifier.py:/app/gemini_classifier.py:ro
+    - ./backend/tensorrt_utils.py:/app/tensorrt_utils.py:ro
+    - ./backend/identity_resolver.py:/app/identity_resolver.py:ro
+    - ./backend/multi_person_tracker.py:/app/multi_person_tracker.py:ro
+    - ./backend/botsort_tracker.py:/app/botsort_tracker.py:ro
+    - ./backend/movement_quality.py:/app/movement_quality.py:ro
+    - ./backend/movement_guidelines.py:/app/movement_guidelines.py:ro
+    - ./backend/db.py:/app/db.py:ro
+    - ./backend/auth.py:/app/auth.py:ro
+    - ./backend/risk_profile.py:/app/risk_profile.py:ro
+    - ./backend/chat_agent.py:/app/chat_agent.py:ro
+    - ./backend/voice_alerts.py:/app/voice_alerts.py:ro
+    - ./backend/tts_elevenlabs.py:/app/tts_elevenlabs.py:ro
+    - ./backend/device_utils.py:/app/device_utils.py:ro
+    - ./backend/vectorai_store.py:/app/vectorai_store.py:ro
+    - ./backend/vector_activity_classifier.py:/app/vector_activity_classifier.py:ro
+    - ./backend/vector_movement_search.py:/app/vector_movement_search.py:ro
+    - ./backend/vdss_proto:/app/vdss_proto:ro
+    - ./brace/core/motion_segments.py:/app/brace/core/motion_segments.py:ro
+
 services:
   frontend:
     build:
@@ -5,7 +45,12 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_started
+        required: false
+      backend-cpu:
+        condition: service_started
+        required: false
 
   mongo:
     image: mongo:7.0
@@ -13,38 +58,22 @@ services:
       - mongodb_data:/data/db
     restart: unless-stopped
 
+  vectorai:
+    image: williamimoh/actian-vectorai-db:1.0b
+    ports:
+      - "5555:50051"
+    volumes:
+      - vectorai_data:/data
+    restart: unless-stopped
+
+  # NVIDIA GPU backend (use with: docker compose --profile nvidia up)
   backend:
+    <<: *backend-common
     build:
       context: .
       dockerfile: backend/Dockerfile
-    ports:
-      - "8001:8000"
-    environment:
-      - PIPELINE_BACKEND=advanced
-      - GOOGLE_GEMINI_API_KEY=${GOOGLE_GEMINI_API_KEY:-AIzaSyDrfeCSYbecPiJ1aLWUlY9MdGDBA96__W8}
-      - MONGODB_URI=mongodb://mongo:27017/brace
-      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
-    depends_on:
-      - mongo
-    volumes:
-      - uploads:/app/uploads
-      - ./data/sports_videos:/app/data/sports_videos:ro
-      - ./backend/main.py:/app/main.py:ro
-      - ./backend/streaming_analyzer.py:/app/streaming_analyzer.py:ro
-      - ./backend/subject_manager.py:/app/subject_manager.py:ro
-      - ./backend/gemini_classifier.py:/app/gemini_classifier.py:ro
-      - ./backend/tensorrt_utils.py:/app/tensorrt_utils.py:ro
-      - ./backend/identity_resolver.py:/app/identity_resolver.py:ro
-      - ./backend/multi_person_tracker.py:/app/multi_person_tracker.py:ro
-      - ./backend/botsort_tracker.py:/app/botsort_tracker.py:ro
-      - ./backend/movement_quality.py:/app/movement_quality.py:ro
-      - ./backend/movement_guidelines.py:/app/movement_guidelines.py:ro
-      - ./backend/db.py:/app/db.py:ro
-      - ./backend/auth.py:/app/auth.py:ro
-      - ./backend/risk_profile.py:/app/risk_profile.py:ro
-      - ./backend/chat_agent.py:/app/chat_agent.py:ro
-      - ./backend/voice_alerts.py:/app/voice_alerts.py:ro
-      - ./brace/core/motion_segments.py:/app/brace/core/motion_segments.py:ro
+    profiles:
+      - nvidia
     deploy:
       resources:
         reservations:
@@ -53,6 +82,16 @@ services:
               count: all
               capabilities: [gpu]
 
+  # CPU-only backend for Mac / non-GPU machines (use with: docker compose --profile cpu up)
+  backend-cpu:
+    <<: *backend-common
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.cpu
+    profiles:
+      - cpu
+
 volumes:
   uploads:
   mongodb_data:
+  vectorai_data:

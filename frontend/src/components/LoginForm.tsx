@@ -10,12 +10,12 @@ interface LoginFormProps {
 }
 
 export default function LoginForm({ onSuccess }: LoginFormProps) {
-  const { login, register } = useAuth();
+  const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleAction = async (action: "login" | "register") => {
+  const handleContinue = async () => {
     if (!username.trim()) {
       setError("Please enter a username");
       return;
@@ -23,11 +23,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
     setLoading(true);
     setError(null);
     try {
-      if (action === "register") {
-        await register(username.trim());
-      } else {
-        await login(username.trim());
-      }
+      await login(username.trim());
       onSuccess?.();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Something went wrong");
@@ -49,7 +45,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
           type="text"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleAction("login")}
+          onKeyDown={(e) => e.key === "Enter" && handleContinue()}
           placeholder="Your username"
           className="w-full px-4 py-3 text-base border-2 border-[#E5E5E5] rounded-[12px] outline-none focus:border-[#1CB0F6] transition-colors"
           disabled={loading}
@@ -58,24 +54,14 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
         {error && (
           <p className="text-sm text-[#EA2B2B] text-center">{error}</p>
         )}
-        <div className="flex gap-3">
-          <DuoButton
-            variant="blue"
-            fullWidth
-            onClick={() => handleAction("login")}
-            disabled={loading}
-          >
-            {loading ? "..." : "Log In"}
-          </DuoButton>
-          <DuoButton
-            variant="primary"
-            fullWidth
-            onClick={() => handleAction("register")}
-            disabled={loading}
-          >
-            {loading ? "..." : "Sign Up"}
-          </DuoButton>
-        </div>
+        <DuoButton
+          variant="primary"
+          fullWidth
+          onClick={handleContinue}
+          disabled={loading}
+        >
+          {loading ? "..." : "Continue"}
+        </DuoButton>
       </div>
     </Card>
   );

@@ -144,10 +144,13 @@ async def register(req: RegisterRequest):
 
 @router.post("/login", response_model=AuthResponse)
 async def login(req: LoginRequest):
-    """Login by username. Not found returns 404."""
-    user = await get_user(req.username)
+    """Login by username. Auto-creates user if not found."""
+    username = req.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username cannot be empty")
+    user = await get_user(username)
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        user = await create_user(username)
     token = await create_session(str(user["_id"]))
     return AuthResponse(
         user_id=str(user["_id"]),

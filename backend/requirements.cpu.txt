@@ -10,14 +10,13 @@ ultralytics>=8.0.0
 boxmot>=11.0.0
 lap>=0.5.0
 umap-learn>=0.5.0
-pynvml>=11.0.0
 torchreid>=0.2.5
 gdown>=4.7.0
 tensorboard>=2.14
 smplx>=0.1.0
 # RTMW3D 3D pose estimation via ONNX (no mmpose/mmcv needed)
 rtmlib>=0.0.14
-# onnxruntime-gpu installed separately in Dockerfile (conflicts with onnxruntime)
+# onnxruntime CPU installed separately in Dockerfile (not GPU)
 # CLIP-based cross-cut re-identification (HuggingFace fallback)
 transformers>=4.30.0
 Pillow>=9.0.0
@@ -25,12 +24,10 @@ Pillow>=9.0.0
 google-genai>=1.0.0
 # Optional: simple-romp for SMPL estimation
 cython>=3.0.0
-# TensorRT FP16 inference acceleration (2-4x speedup on RTX 5090)
-tensorrt>=10.0.0
 # MongoDB async/sync drivers
 motor>=3.3.0
 pymongo>=4.6.0
 # Actian VectorAI DB gRPC client (optional — graceful degradation if unavailable)
 grpcio>=1.60.0
 grpcio-tools>=1.60.0
-# Optional: pytorch3d (required for proper UV projection, not for basic SMPL params)
+# NOTE: tensorrt and pynvml excluded — NVIDIA-only dependencies

@@ -32,14 +32,17 @@ class EmbeddingExtractor(ABC):
 class OSNetExtractor(EmbeddingExtractor):
     """OSNet-x0_25 appearance embedding via torchreid."""
 
-    def __init__(self, device: str = "cuda"):
+    def __init__(self, device: str | None = None):
         import torch
         try:
             from torchreid.utils import FeatureExtractor
         except (ImportError, ModuleNotFoundError):
             from torchreid.reid.utils.feature_extractor import FeatureExtractor
 
-        self._device = device if torch.cuda.is_available() else "cpu"
+        if device is None:
+            from device_utils import get_best_device
+            device = get_best_device()
+        self._device = device
         self._extractor = FeatureExtractor(
             model_name="osnet_x0_25",
             device=self._device,

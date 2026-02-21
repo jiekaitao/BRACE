@@ -56,10 +56,10 @@ Timeframe: acute, chronic, recovered"""
 
 
 class InjuryChatAgent:
-    """Wraps Gemini 2.0 Flash for injury intake conversation."""
+    """Wraps Gemini 2.5 Pro for injury intake conversation."""
 
     def __init__(self):
-        self._model = "gemini-2.0-flash"
+        self._model = "gemini-2.5-pro"
 
     async def chat(self, messages: list[dict[str, str]]) -> dict[str, Any]:
         """Send messages to Gemini and parse response.

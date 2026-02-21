@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, Suspense } from "react";
+import { Fragment, useState, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useChat } from "@/hooks/useChat";
@@ -101,11 +101,11 @@ function OnboardingContent() {
   return (
     <div className="min-h-screen flex flex-col items-center px-5 py-8">
       {/* Progress bar */}
-      <div className="flex items-center gap-2 mb-8 w-full max-w-md">
+      <div className="flex items-center mb-8 w-full max-w-md">
         {STEPS.map((_, i) => (
-          <div key={i} className="flex items-center flex-1">
+          <Fragment key={i}>
             <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 ${
+              className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-sm font-bold transition-all duration-300 ${
                 i <= step
                   ? "bg-[#58CC02] text-white"
                   : "bg-[#E5E5E5] text-[#AFAFAF]"
@@ -127,12 +127,12 @@ function OnboardingContent() {
             </div>
             {i < STEPS.length - 1 && (
               <div
-                className={`flex-1 h-1 mx-1 rounded transition-colors duration-300 ${
+                className={`h-1 flex-1 mx-2 rounded transition-colors duration-300 ${
                   i < step ? "bg-[#58CC02]" : "bg-[#E5E5E5]"
                 }`}
               />
             )}
-          </div>
+          </Fragment>
         ))}
       </div>
 

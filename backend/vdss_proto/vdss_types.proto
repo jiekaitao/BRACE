@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package vdss;
+
+enum IndexAlgorithm {
+  HNSW = 0;
+}
+
+enum IndexDriver {
+  FAISS = 0;
+}
+
+enum StorageType {
+  BTRIEVE_FILE = 0;
+  MEM = 1;
+  BTRIEVE_SPACE = 2;
+}
+
+enum DistanceMetric {
+  COSINE = 0;
+  EUCLIDEAN = 1;
+  DOT = 2;
+}
+
+enum CollectionState {
+  READY = 0;
+  REBUILDING = 1;
+  ERROR = 2;
+}
+
+message VectorIdentifier {
+  uint64 u64_id = 1;
+  string uuid = 2;
+}
+
+message Vector {
+  repeated float data = 1;
+  uint32 dimension = 2;
+}
+
+message Payload {
+  string json = 1;
+}
+
+message HnswConfig {
+  uint32 m = 1;
+  uint32 ef_construct = 2;
+  uint32 ef_search = 3;
+}
+
+message CollectionConfig {
+  IndexDriver index_driver = 1;
+  IndexAlgorithm index_algorithm = 2;
+  StorageType storage_type = 3;
+  uint32 dimension = 4;
+  DistanceMetric distance_metric = 5;
+  string config_json = 6;
+  HnswConfig hnsw_config = 7;
+}
+
+message SearchResult {
+  VectorIdentifier id = 1;
+  float score = 2;
+  Vector vector = 3;
+  Payload payload = 4;
+}
+
+message CollectionStats {
+  uint64 total_vectors = 1;
+  uint64 indexed_vectors = 2;
+  uint64 deleted_vectors = 3;
+  uint64 storage_bytes = 4;
+  uint64 index_memory_bytes = 5;
+}
+
+message Status {
+  int32 code = 1;
+  string message = 2;
+}

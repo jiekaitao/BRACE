@@ -10,8 +10,14 @@ services:
     volumes:
       - ./frontend/src:/app/src
     depends_on:
-      - backend
+      backend:
+        condition: service_started
+        required: false
+      backend-cpu:
+        condition: service_started
+        required: false
 
+  # NVIDIA GPU dev backend
   backend:
     build:
       context: .
@@ -24,6 +30,8 @@ services:
       - uploads:/app/uploads
       - ./data/sports_videos:/app/data/sports_videos:ro
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    profiles:
+      - nvidia
     deploy:
       resources:
         reservations:
@@ -31,6 +39,22 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+
+  # CPU-only dev backend (Mac / non-GPU)
+  backend-cpu:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.cpu
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./backend:/app
+      - ./brace:/app/brace
+      - uploads:/app/uploads
+      - ./data/sports_videos:/app/data/sports_videos:ro
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    profiles:
+      - cpu
 
 volumes:
   uploads:
