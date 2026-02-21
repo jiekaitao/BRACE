@@ -35,6 +35,7 @@ x-backend-common: &backend-common
     - ./backend/vectorai_store.py:/app/vectorai_store.py:ro
     - ./backend/vector_activity_classifier.py:/app/vector_activity_classifier.py:ro
     - ./backend/vector_movement_search.py:/app/vector_movement_search.py:ro
+    - ./backend/concussion_pipeline.py:/app/concussion_pipeline.py:ro
     - ./backend/vdss_proto:/app/vdss_proto:ro
     - ./brace/core/motion_segments.py:/app/brace/core/motion_segments.py:ro
 

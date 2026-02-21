@@ -26,6 +26,11 @@ from fastapi.responses import FileResponse, Response
 import struct
 
 try:
+    from concussion_pipeline import router as concussion_router
+except ImportError:
+    concussion_router = None
+
+try:
     import webrtc_api
     _WEBRTC_AVAILABLE = True
 except ImportError:
@@ -95,6 +100,9 @@ if auth_router is not None:
 
 if chat_router is not None:
     app.include_router(chat_router)
+
+if concussion_router is not None:
+    app.include_router(concussion_router)
 
 if _WEBRTC_AVAILABLE:
     app.include_router(webrtc_api.router)

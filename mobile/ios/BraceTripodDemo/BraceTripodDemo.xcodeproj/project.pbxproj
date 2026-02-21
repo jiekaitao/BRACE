@@ -1,0 +1,443 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 63;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		05B0A48323FBCFF309A503E6 /* LiveLandmarkWebSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BF633DA7B97EE66CDC99C2F /* LiveLandmarkWebSocket.swift */; };
+		0CEEDFDDF7C9B9F4014BC1FC /* DemoViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 689DF2855777B9B1FD41EF24 /* DemoViewModelTests.swift */; };
+		1CD5E7DF9B764EA13EFCFBA8 /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D01F6C8FF7467BA8F93E724 /* CaptureView.swift */; };
+		29CB722BA42B9D790B9445F9 /* SidelineCaptureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E3E7741B14FEB5B1D26B2C /* SidelineCaptureManager.swift */; };
+		903C24E0525452583D9195CD /* BraceTripodDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 780838FA3DD304F254613EB7 /* BraceTripodDemoApp.swift */; };
+		9D1C7FF7EF5831576A7A3E7A /* CameraPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70D8A9F9413FC91A122A0E01 /* CameraPreview.swift */; };
+		C2B655B297B0A9D1772A54FB /* TripodUploadQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D220F7152A05D5FADEC567F /* TripodUploadQueue.swift */; };
+		E3FBAE54FA02BABBBE733C8E /* LiveStreamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ED91EE9211678503F86FF15 /* LiveStreamView.swift */; };
+		E7CF77DA32FB305824A8EE4B /* DemoViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5951179CE3B3A97F9205AD84 /* DemoViewModel.swift */; };
+		EDAD415B1601416411F5139E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 638F257135BD7324EF85A4CD /* ContentView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		1E6DB99C5571754CB6EEA2B1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F8602FB437A21FEC9EA4FB44 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 41AACD4162FDE9751DFB3133;
+			remoteInfo = BraceTripodDemo;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		07FB5082EB153696EDD22315 /* BraceTripodDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BraceTripodDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		155003F25C0AEFE58334FBDE /* BraceTripodDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BraceTripodDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3D01F6C8FF7467BA8F93E724 /* CaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureView.swift; sourceTree = "<group>"; };
+		3D220F7152A05D5FADEC567F /* TripodUploadQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripodUploadQueue.swift; sourceTree = "<group>"; };
+		4BF633DA7B97EE66CDC99C2F /* LiveLandmarkWebSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLandmarkWebSocket.swift; sourceTree = "<group>"; };
+		5951179CE3B3A97F9205AD84 /* DemoViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoViewModel.swift; sourceTree = "<group>"; };
+		638F257135BD7324EF85A4CD /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		689DF2855777B9B1FD41EF24 /* DemoViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoViewModelTests.swift; sourceTree = "<group>"; };
+		70D8A9F9413FC91A122A0E01 /* CameraPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreview.swift; sourceTree = "<group>"; };
+		780838FA3DD304F254613EB7 /* BraceTripodDemoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BraceTripodDemoApp.swift; sourceTree = "<group>"; };
+		930CC6AC2E73E624F105502C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		9ED91EE9211678503F86FF15 /* LiveStreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveStreamView.swift; sourceTree = "<group>"; };
+		E6E3E7741B14FEB5B1D26B2C /* SidelineCaptureManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidelineCaptureManager.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0DF1780228772960898DD48F /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				689DF2855777B9B1FD41EF24 /* DemoViewModelTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		2579B8E5696CCE6BC63B2191 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				4BF633DA7B97EE66CDC99C2F /* LiveLandmarkWebSocket.swift */,
+				E6E3E7741B14FEB5B1D26B2C /* SidelineCaptureManager.swift */,
+				3D220F7152A05D5FADEC567F /* TripodUploadQueue.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		5D5B2E9700E68F0C7E1DF666 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				7F3221B3A6116390A6CCD590 /* App */,
+				2579B8E5696CCE6BC63B2191 /* Core */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		7F3221B3A6116390A6CCD590 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				780838FA3DD304F254613EB7 /* BraceTripodDemoApp.swift */,
+				70D8A9F9413FC91A122A0E01 /* CameraPreview.swift */,
+				3D01F6C8FF7467BA8F93E724 /* CaptureView.swift */,
+				638F257135BD7324EF85A4CD /* ContentView.swift */,
+				5951179CE3B3A97F9205AD84 /* DemoViewModel.swift */,
+				930CC6AC2E73E624F105502C /* Info.plist */,
+				9ED91EE9211678503F86FF15 /* LiveStreamView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		99851D2211C5D8030C701416 = {
+			isa = PBXGroup;
+			children = (
+				5D5B2E9700E68F0C7E1DF666 /* Sources */,
+				0DF1780228772960898DD48F /* Tests */,
+				FCCC51E21FEF68D196F3840B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		FCCC51E21FEF68D196F3840B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				155003F25C0AEFE58334FBDE /* BraceTripodDemo.app */,
+				07FB5082EB153696EDD22315 /* BraceTripodDemoTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		41AACD4162FDE9751DFB3133 /* BraceTripodDemo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 145E878ED9BCE66B4F2156DF /* Build configuration list for PBXNativeTarget "BraceTripodDemo" */;
+			buildPhases = (
+				2926838A8780A84211B337DC /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BraceTripodDemo;
+			packageProductDependencies = (
+			);
+			productName = BraceTripodDemo;
+			productReference = 155003F25C0AEFE58334FBDE /* BraceTripodDemo.app */;
+			productType = "com.apple.product-type.application";
+		};
+		559DD0C0036E298F5CA66498 /* BraceTripodDemoTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EA5E658E888D22E816DCCCF8 /* Build configuration list for PBXNativeTarget "BraceTripodDemoTests" */;
+			buildPhases = (
+				FD01DA4EEAFC55CA396E075C /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				35902C29238B87AA3629E196 /* PBXTargetDependency */,
+			);
+			name = BraceTripodDemoTests;
+			packageProductDependencies = (
+			);
+			productName = BraceTripodDemoTests;
+			productReference = 07FB5082EB153696EDD22315 /* BraceTripodDemoTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		F8602FB437A21FEC9EA4FB44 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					41AACD4162FDE9751DFB3133 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = F952A53AA5CC38F18E55D0F6 /* Build configuration list for PBXProject "BraceTripodDemo" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 99851D2211C5D8030C701416;
+			minimizedProjectReferenceProxies = 1;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				41AACD4162FDE9751DFB3133 /* BraceTripodDemo */,
+				559DD0C0036E298F5CA66498 /* BraceTripodDemoTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2926838A8780A84211B337DC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				903C24E0525452583D9195CD /* BraceTripodDemoApp.swift in Sources */,
+				9D1C7FF7EF5831576A7A3E7A /* CameraPreview.swift in Sources */,
+				1CD5E7DF9B764EA13EFCFBA8 /* CaptureView.swift in Sources */,
+				EDAD415B1601416411F5139E /* ContentView.swift in Sources */,
+				E7CF77DA32FB305824A8EE4B /* DemoViewModel.swift in Sources */,
+				05B0A48323FBCFF309A503E6 /* LiveLandmarkWebSocket.swift in Sources */,
+				E3FBAE54FA02BABBBE733C8E /* LiveStreamView.swift in Sources */,
+				29CB722BA42B9D790B9445F9 /* SidelineCaptureManager.swift in Sources */,
+				C2B655B297B0A9D1772A54FB /* TripodUploadQueue.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FD01DA4EEAFC55CA396E075C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0CEEDFDDF7C9B9F4014BC1FC /* DemoViewModelTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		35902C29238B87AA3629E196 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 41AACD4162FDE9751DFB3133 /* BraceTripodDemo */;
+			targetProxy = 1E6DB99C5571754CB6EEA2B1 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		18A47A09C6C80085C34481B8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				DEVELOPMENT_TEAM = 3S2X4R5G86;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.brace.tripoddemo.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BraceTripodDemo.app/BraceTripodDemo";
+			};
+			name = Debug;
+		};
+		360C5F034298F15F65205856 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		502684087743095245042D53 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3S2X4R5G86;
+				INFOPLIST_FILE = Sources/App/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.brace.tripoddemo;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		54C4CF9DCC47A2EB58951029 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		8FC583AB450A8174FD18D5C3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				DEVELOPMENT_TEAM = 3S2X4R5G86;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.brace.tripoddemo.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BraceTripodDemo.app/BraceTripodDemo";
+			};
+			name = Release;
+		};
+		A42EC97DB517F27A1FF24DD9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3S2X4R5G86;
+				INFOPLIST_FILE = Sources/App/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.brace.tripoddemo;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		145E878ED9BCE66B4F2156DF /* Build configuration list for PBXNativeTarget "BraceTripodDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A42EC97DB517F27A1FF24DD9 /* Debug */,
+				502684087743095245042D53 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EA5E658E888D22E816DCCCF8 /* Build configuration list for PBXNativeTarget "BraceTripodDemoTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				18A47A09C6C80085C34481B8 /* Debug */,
+				8FC583AB450A8174FD18D5C3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F952A53AA5CC38F18E55D0F6 /* Build configuration list for PBXProject "BraceTripodDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				54C4CF9DCC47A2EB58951029 /* Debug */,
+				360C5F034298F15F65205856 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = F8602FB437A21FEC9EA4FB44 /* Project object */;
+}
