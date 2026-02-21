@@ -683,6 +683,7 @@ async def _handle_webcam_mode(
         "last_time": 0.0,
         "pending": False,
     }
+    analysis_tasks: set[asyncio.Task[Any]] = set()
 
     def _get_buffered_frame(idx: int) -> np.ndarray | None:
         return frame_buffer.get(idx)
@@ -753,6 +754,44 @@ async def _handle_webcam_mode(
                     )
             except Exception as e:
                 print(f"[vectorai] template store failed: {e}", flush=True)
+
+    async def _run_analysis_bg(analyzer: Any, subject_id: int) -> None:
+        """Run heavy re-analysis without blocking the frame loop."""
+        try:
+            await loop.run_in_executor(_executor, analyzer.run_analysis)
+
+            # Trigger Gemini classification for stable clusters (background)
+            if gemini is not None and gemini.available:
+                for cid in analyzer.get_clusters_needing_classification(min_segments=1):
+                    analyzer.mark_classification_pending(cid)
+                    asyncio.ensure_future(
+                        loop.run_in_executor(
+                            _executor, _classify_cluster_webcam,
+                            analyzer, cid, gemini,
+                        )
+                    )
+
+            # Store latest motion segment metadata after analysis refresh.
+            if _movement_search is not None and len(analyzer.features_list) > 0:
+                try:
+                    latest_feat = analyzer.features_list[-1]
+                    latest_vi = len(analyzer.features_list) - 1
+                    seg = analyzer._frame_to_segment.get(latest_vi)
+                    cid = seg.get("cluster", -1) if seg else -1
+                    activity = analyzer._activity_labels.get(cid, "unknown")
+                    _movement_search.store_segment(
+                        latest_feat,
+                        metadata={
+                            "activity_label": activity,
+                            "session_id": session_id if session_id else "webcam",
+                            "person_id": str(subject_id),
+                            "risk_score": float(getattr(analyzer, "_fatigue_index", 0.0)),
+                        },
+                    )
+                except Exception as e:
+                    print(f"[vectorai] segment store failed: {e}", flush=True)
+        finally:
+            analyzer._analysis_pending = False
 
     try:
         while True:
@@ -959,39 +998,11 @@ async def _handle_webcam_mode(
 
                 # Run re-analysis if needed
                 if analyzer.needs_reanalysis():
-                    await loop.run_in_executor(None, analyzer.run_analysis)
-
-                    # Trigger Gemini classification for stable clusters (background)
-                    if gemini is not None and gemini.available:
-                        for cid in analyzer.get_clusters_needing_classification(min_segments=1):
-                            analyzer.mark_classification_pending(cid)
-                            asyncio.ensure_future(
-                                loop.run_in_executor(
-                                    _executor, _classify_cluster_webcam,
-                                    analyzer, cid, gemini,
-                                )
-                            )
-
-                    # Store motion segments in VectorAI (background, non-blocking)
-                    if _movement_search is not None and len(analyzer.features_list) > 0:
-                        try:
-                            latest_feat = analyzer.features_list[-1]
-                            activity = analyzer._activity_labels.get(
-                                response.get("cluster_id", -1), "unknown"
-                            )
-                            _movement_search.store_segment(
-                                latest_feat,
-                                metadata={
-                                    "activity_label": activity,
-                                    "session_id": session_id if session_id else "webcam",
-                                    "person_id": str(subject_id),
-                                    "risk_score": response.get("quality", {}).get(
-                                        "composite_fatigue", 0.0
-                                    ),
-                                },
-                            )
-                        except Exception as e:
-                            print(f"[vectorai] segment store failed: {e}", flush=True)
+                    if not getattr(analyzer, "_analysis_pending", False):
+                        analyzer._analysis_pending = True
+                        task = asyncio.create_task(_run_analysis_bg(analyzer, subject_id))
+                        analysis_tasks.add(task)
+                        task.add_done_callback(lambda t: analysis_tasks.discard(t))
 
                 # Handle UMAP embedding (non-blocking: refit runs in background)
                 embedding_update = None
@@ -1058,7 +1069,8 @@ async def _handle_webcam_mode(
                 # Include SMPL params and UV texture if available
                 if pr.smpl_params is not None:
                     subject_out["smpl_params"] = pr.smpl_params
-                if pr.smpl_texture_uv is not None:
+                # UV texture JPEG encoding is expensive; throttle to reduce frame-loop stalls.
+                if pr.smpl_texture_uv is not None and frame_idx % 10 == 0:
                     import base64 as b64
                     _, buf = cv2.imencode(".jpg", pr.smpl_texture_uv,
                                          [cv2.IMWRITE_JPEG_QUALITY, 60])
@@ -1123,6 +1135,9 @@ async def _handle_webcam_mode(
 
     except WebSocketDisconnect:
         pass
+    finally:
+        for task in list(analysis_tasks):
+            task.cancel()
 
 if __name__ == "__main__":
     import uvicorn
