@@ -39,6 +39,9 @@ out/
 .DS_Store
 Thumbs.db
 
+# Dev mode PID file
+.frontend.pid
+
 # Environment variables
 .env
 .env.local
@@ -62,6 +65,9 @@ experiments/*.json
 
 # Backend uploads
 backend/uploads/
+
+# Demo/sports videos (too large for git)
+backend/data/sports_videos/
 
 # Coach report sent logs
 backend/data/coach_reports/sent/

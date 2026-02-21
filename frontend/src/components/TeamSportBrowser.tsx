@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { SPORTS } from "@/lib/teamSportsData";
-import VideoButton from "@/components/ui/VideoButton";
 
 const SPORT_ICONS: Record<string, React.ReactNode> = {
   basketball: (
@@ -55,24 +54,14 @@ interface TeamSportBrowserProps {
 
 export default function TeamSportBrowser({ onClose, showContent }: TeamSportBrowserProps) {
   const router = useRouter();
-  const [selectedSport, setSelectedSport] = useState<string | null>(null);
 
-  // Escape key: go back to sport list if a sport is selected, otherwise close
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (selectedSport) {
-          setSelectedSport(null);
-        } else {
-          onClose();
-        }
-      }
+      if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedSport, onClose]);
-
-  const sport = SPORTS.find((s) => s.id === selectedSport);
+  }, [onClose]);
 
   return (
     <motion.div
@@ -82,22 +71,9 @@ export default function TeamSportBrowser({ onClose, showContent }: TeamSportBrow
     >
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-[#222]">
-        <div className="flex items-center gap-3">
-          {selectedSport && (
-            <button
-              onClick={() => setSelectedSport(null)}
-              className="w-9 h-9 flex items-center justify-center rounded-full bg-[#1A1A1A] border border-[#333] text-white/60 font-bold text-lg cursor-pointer hover:bg-[#2A2A2A] transition-colors"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 12H5" />
-                <path d="M12 19l-7-7 7-7" />
-              </svg>
-            </button>
-          )}
-          <h2 className="text-xl font-extrabold text-white m-0">
-            {sport ? sport.name : "Choose a Sport"}
-          </h2>
-        </div>
+        <h2 className="text-xl font-extrabold text-white m-0">
+          Choose a Sport
+        </h2>
         <button
           onClick={onClose}
           className="w-9 h-9 flex items-center justify-center rounded-full bg-[#1A1A1A] border border-[#333] text-white/60 font-bold text-lg cursor-pointer hover:bg-[#2A2A2A] transition-colors"
@@ -106,61 +82,41 @@ export default function TeamSportBrowser({ onClose, showContent }: TeamSportBrow
         </button>
       </div>
 
-      {/* Content */}
+      {/* Sport grid */}
       <div className="flex-1 px-6 py-5 overflow-y-auto">
-        <AnimatePresence mode="wait">
-          {!selectedSport ? (
-            <motion.div
-              key="sports-grid"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.2 }}
-              className="grid grid-cols-3 gap-4"
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.2 }}
+          className="grid grid-cols-3 gap-4"
+        >
+          {SPORTS.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => {
+                if (s.demoVideo) {
+                  router.push(`/analyze?mode=demo&video=${encodeURIComponent(s.demoVideo)}`);
+                }
+              }}
+              disabled={!s.demoVideo}
+              className={`group relative overflow-hidden rounded-[16px] border bg-[#111] aspect-[4/3] flex flex-col items-center justify-center gap-3 transition-all duration-100 ${
+                s.demoVideo
+                  ? "border-[#333] cursor-pointer shadow-[0_4px_0_#222] hover:border-white/40 hover:shadow-[0_4px_0_#444] active:shadow-none active:translate-y-[4px]"
+                  : "border-[#222] cursor-default opacity-40"
+              }`}
             >
-              {SPORTS.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => setSelectedSport(s.id)}
-                  className="group relative overflow-hidden rounded-[16px] border border-[#333] bg-[#111] cursor-pointer aspect-[4/3] shadow-[0_4px_0_#222] hover:border-white/40 hover:shadow-[0_4px_0_#444] active:shadow-none active:translate-y-[4px] transition-all duration-100 flex flex-col items-center justify-center gap-3"
-                >
-                  <div className="opacity-40 group-hover:opacity-80 transition-opacity duration-200">
-                    {SPORT_ICONS[s.id]}
-                  </div>
-                  <span className="text-white font-extrabold text-sm">
-                    {s.name}
-                  </span>
-                </button>
-              ))}
-            </motion.div>
-          ) : (
-            <motion.div
-              key={`videos-${selectedSport}`}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.2 }}
-              className="flex flex-col gap-3"
-            >
-              {sport!.videos.map((video, i) => (
-                <motion.div
-                  key={video.id}
-                  initial={{ opacity: 0, x: -30 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.25, delay: i * 0.06 }}
-                >
-                  <VideoButton
-                    title={video.title}
-                    thumbnail={video.thumbnail}
-                    onClick={video.filename ? () => {
-                      router.push(`/analyze?mode=demo&video=${encodeURIComponent(video.filename!)}`);
-                    } : undefined}
-                  />
-                </motion.div>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
+              <div className={`transition-opacity duration-200 ${s.demoVideo ? "opacity-40 group-hover:opacity-80" : "opacity-30"}`}>
+                {SPORT_ICONS[s.id]}
+              </div>
+              <span className="text-white font-extrabold text-sm">
+                {s.name}
+              </span>
+              {!s.demoVideo && (
+                <span className="text-white/30 text-[10px] font-bold">Coming soon</span>
+              )}
+            </button>
+          ))}
+        </motion.div>
       </div>
     </motion.div>
   );

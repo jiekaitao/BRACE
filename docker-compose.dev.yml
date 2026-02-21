@@ -1,21 +1,4 @@
 services:
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
-    depends_on:
-      backend:
-        condition: service_started
-        required: false
-      backend-cpu:
-        condition: service_started
-        required: false
-
   # NVIDIA GPU dev backend
   backend:
     build:
