@@ -1,5 +1,10 @@
 # CLAUDE.md
 
+IMPORTANT:
+NEVER EVER push to the GitHub repo by yourself
+
+For all the major challenges you encounter, add it to documentation/challenges.md as we will need to talk about the challenges when the hackathon ends.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Build & Run Commands
