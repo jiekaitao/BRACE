@@ -63,5 +63,8 @@ experiments/*.json
 # Backend uploads
 backend/uploads/
 
+# Coach report sent logs
+backend/data/coach_reports/sent/
+
 # Documentation swap files
 documentation/.*.swp
