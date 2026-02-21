@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useCallback, Suspense } from "react";
+import { Fragment, useState, useCallback, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useChat } from "@/hooks/useChat";
@@ -26,11 +26,19 @@ function OnboardingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const path = searchParams.get("path") ?? "personal";
+  const isEdit = searchParams.get("edit") === "true";
 
   const isTeam = path === "team";
   const STEPS = isTeam ? TEAM_STEPS : PERSONAL_STEPS;
 
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+
+  // Redirect already-onboarded users unless in edit mode
+  useEffect(() => {
+    if (!loading && user?.injury_profile && !isEdit) {
+      router.replace("/dashboard");
+    }
+  }, [loading, user, isEdit, router]);
   const {
     messages,
     loading: chatLoading,

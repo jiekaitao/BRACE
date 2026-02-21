@@ -39,6 +39,19 @@ x-backend-common: &backend-common
     - ./brace/core/motion_segments.py:/app/brace/core/motion_segments.py:ro
 
 services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "3080:80"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_started
+
   frontend:
     build:
       context: ./frontend
