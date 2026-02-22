@@ -122,3 +122,38 @@ export async function submitGame(sessionId: string, sport = "basketball"): Promi
   );
   return res.json();
 }
+
+// --- VectorAI Dashboard API ---
+
+import type { VectorStats, VectorEntriesResponse } from "./types";
+
+export async function fetchVectorStats(): Promise<VectorStats> {
+  const res = await fetch(`${getApiBase()}/api/vectorai/stats`);
+  return res.json();
+}
+
+export async function fetchVectorEntries(
+  collection: string,
+  opts: { limit?: number; offset?: number; person_id?: string; session_id?: string; activity_label?: string } = {},
+): Promise<VectorEntriesResponse> {
+  const params = new URLSearchParams({ collection, limit: String(opts.limit ?? 20), offset: String(opts.offset ?? 0) });
+  if (opts.person_id) params.set("person_id", opts.person_id);
+  if (opts.session_id) params.set("session_id", opts.session_id);
+  if (opts.activity_label) params.set("activity_label", opts.activity_label);
+  const res = await fetch(`${getApiBase()}/api/vectorai/entries?${params}`);
+  return res.json();
+}
+
+export async function fetchVectorEntry(uuid: string): Promise<{ entry: Record<string, unknown>; vector_dimension: number; has_vector: boolean }> {
+  const res = await fetch(`${getApiBase()}/api/vectorai/entries/${uuid}`);
+  return res.json();
+}
+
+export async function searchSimilarVectors(uuid: string, collection: string, topK = 5): Promise<{ results: Array<{ uuid: string; score: number; metadata: Record<string, unknown> }> }> {
+  const res = await fetch(`${getApiBase()}/api/vectorai/search-similar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uuid, collection, top_k: topK }),
+  });
+  return res.json();
+}

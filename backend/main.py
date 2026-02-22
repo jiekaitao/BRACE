@@ -485,10 +485,27 @@ def movements_similar(
     if session_id:
         filters["session_id"] = session_id
 
-    # For a general query without a specific vector, we return recent segments
-    # A proper query requires a feature vector — this endpoint is best used
-    # with a segment_idx param that references stored features
-    return {"error": "Provide a feature vector via POST", "results": []}
+    # Use a zero vector as a neutral query to browse segments with metadata filters
+    try:
+        dummy_query = np.zeros(42, dtype=np.float32)
+        results = _vectorai_store.find_similar_movements(
+            dummy_query, top_k=top_k, filters=filters if filters else None,
+        )
+        return {
+            "results": [
+                {
+                    "score": r["score"],
+                    "activity_label": r["metadata"].get("activity_label", "unknown"),
+                    "session_id": r["metadata"].get("session_id", ""),
+                    "person_id": r["metadata"].get("person_id", ""),
+                    "risk_score": r["metadata"].get("risk_score", 0.0),
+                    "timestamp": r["metadata"].get("timestamp", 0.0),
+                }
+                for r in results
+            ],
+        }
+    except Exception as e:
+        return {"error": str(e), "results": []}
 
 
 @app.post("/api/movements/similar")
@@ -533,6 +550,129 @@ def person_history(person_id: str):
         }
     except Exception as e:
         return {"error": str(e), "history": []}
+
+
+# ---------------------------------------------------------------------------
+# VectorAI Dashboard Endpoints
+# ---------------------------------------------------------------------------
+
+VECTORAI_COLLECTIONS = ["person_embeddings", "motion_segments", "activity_templates"]
+
+
+@app.get("/api/vectorai/stats")
+def vectorai_stats():
+    """Return per-collection stats from gRPC."""
+    results = {}
+    for col_name in VECTORAI_COLLECTIONS:
+        try:
+            stats = _vectorai_store.get_stats(col_name)
+            stats["count"] = _vectorai_store.get_vector_count(col_name)
+            results[col_name] = stats
+        except Exception as e:
+            results[col_name] = {"error": str(e), "count": 0}
+    return results
+
+
+@app.get("/api/vectorai/entries")
+async def vectorai_entries(
+    collection: str = Query("person_embeddings", description="Collection name"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    person_id: str = "",
+    session_id: str = "",
+    activity_label: str = "",
+):
+    """Paginated browse of vector entries from MongoDB mirror."""
+    try:
+        from db import get_collection
+        col = get_collection("vector_entries")
+
+        query: dict = {"collection": collection}
+        if person_id:
+            query["person_id"] = person_id
+        if session_id:
+            query["session_id"] = session_id
+        if activity_label:
+            query["activity_label"] = activity_label
+
+        total = await col.count_documents(query)
+        cursor = col.find(query, {"_id": 0}).sort("timestamp", -1).skip(offset).limit(limit)
+        entries = await cursor.to_list(length=limit)
+
+        return {
+            "collection": collection,
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "entries": entries,
+        }
+    except Exception as e:
+        return {"error": str(e), "entries": [], "total": 0}
+
+
+@app.get("/api/vectorai/entries/{vector_uuid}")
+async def vectorai_entry_detail(vector_uuid: str):
+    """Get a single vector entry by UUID (MongoDB + gRPC vector data)."""
+    try:
+        from db import get_collection
+        col = get_collection("vector_entries")
+        doc = await col.find_one({"vector_uuid": vector_uuid}, {"_id": 0})
+        if not doc:
+            return {"error": "Not found"}
+
+        # Optionally fetch the actual vector from gRPC
+        grpc_data = {}
+        try:
+            grpc_data = _vectorai_store.get_vector(doc.get("collection", ""), vector_uuid)
+        except Exception:
+            pass
+
+        return {
+            "entry": doc,
+            "vector_dimension": grpc_data.get("dimension", 0),
+            "has_vector": bool(grpc_data.get("vector")),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/vectorai/search-similar")
+async def vectorai_search_similar(request: dict):
+    """Find similar vectors by UUID — fetches vector from VectorAI, uses as search query."""
+    try:
+        vector_uuid = request.get("uuid", "")
+        collection = request.get("collection", "motion_segments")
+        top_k = request.get("top_k", 5)
+
+        if not vector_uuid:
+            return {"error": "uuid is required"}
+
+        # Fetch the vector
+        vec_data = _vectorai_store.get_vector(collection, vector_uuid)
+        if not vec_data or not vec_data.get("vector"):
+            return {"error": "Vector not found"}
+
+        query_vec = np.array(vec_data["vector"], dtype=np.float32)
+
+        # Search in the same collection
+        results = _vectorai_store._client.search(
+            collection, query_vec, top_k=top_k + 1,
+        )
+
+        # Filter out the query vector itself
+        similar = [
+            {
+                "uuid": r.get("uuid", ""),
+                "score": r.get("score", 0.0),
+                "metadata": r.get("metadata", {}),
+            }
+            for r in results
+            if r.get("uuid") != vector_uuid
+        ][:top_k]
+
+        return {"results": similar}
+    except Exception as e:
+        return {"error": str(e), "results": []}
 
 
 # ---------------------------------------------------------------------------
@@ -1083,11 +1223,25 @@ async def _handle_webcam_mode(
     }
     analysis_tasks: set[asyncio.Task[Any]] = set()
 
+    # Similar movements cache: subject_id -> {cluster_id, results, timestamp}
+    _similar_cache: dict[int, dict] = {}
+    _SIMILAR_COOLDOWN = 2.0  # seconds between lookups per subject
+
     def _get_buffered_frame(idx: int) -> np.ndarray | None:
         return frame_buffer.get(idx)
 
-    def _classify_cluster_webcam(analyzer, cluster_id: int, gem: GeminiActivityClassifier):
-        # Gemini vision classification
+    def _classify_cluster_webcam(analyzer, cluster_id: int, gem: GeminiActivityClassifier, vec_clf=None):
+        label = "unknown"
+        # Fast path: VectorAI (~1ms, no API cost)
+        if vec_clf is not None and vec_clf.available:
+            features = analyzer.features_list
+            if features:
+                label = vec_clf.classify(features[-1])
+                if label != "unknown":
+                    print(f"[vector-clf] cluster {cluster_id} -> '{label}' (fast path)", flush=True)
+                    analyzer.set_activity_label(cluster_id, label)
+                    return
+        # Slow path: Gemini vision classification
         indices = analyzer.get_cluster_frame_indices(cluster_id)
         if not indices:
             print(f"[gemini] cluster {cluster_id}: no frame indices, skipping", flush=True)
@@ -1409,14 +1563,14 @@ async def _handle_webcam_mode(
                         task.add_done_callback(lambda t: analysis_tasks.discard(t))
 
                 # Gemini activity classification for unlabeled clusters
-                if gemini is not None and gemini.available:
+                if (gemini is not None and gemini.available) or (_vector_classifier is not None and _vector_classifier.available):
                     for cid in analyzer.get_clusters_needing_classification():
                         analyzer.mark_classification_pending(cid)
                         asyncio.ensure_future(
                             loop.run_in_executor(
                                 _executor,
                                 _classify_cluster_webcam,
-                                analyzer, cid, gemini,
+                                analyzer, cid, gemini, _vector_classifier,
                             )
                         )
 
@@ -1502,6 +1656,47 @@ async def _handle_webcam_mode(
                     subject_out["embedding_update"] = embedding_update
                 if "cluster_representatives" in response:
                     subject_out["cluster_representatives"] = response["cluster_representatives"]
+
+                # Similar movements from VectorAI (throttled, once per new cluster)
+                current_cid = response.get("cluster_id")
+                cached = _similar_cache.get(subject_id)
+                if (
+                    current_cid is not None
+                    and current_cid >= 0
+                    and _vectorai_store._available
+                    and (
+                        cached is None
+                        or cached.get("cluster_id") != current_cid
+                        or time.monotonic() - cached.get("ts", 0) > _SIMILAR_COOLDOWN
+                    )
+                ):
+                    try:
+                        feats = analyzer.features_list
+                        if feats:
+                            query = np.array(feats[-1], dtype=np.float32)
+                            sim_results = _vectorai_store.find_similar_movements(
+                                query, top_k=3,
+                                filters={"session_id": {"$ne": session_id}} if session_id else None,
+                            )
+                            sim_out = [
+                                {
+                                    "activity_label": r["metadata"].get("activity_label", "unknown"),
+                                    "score": round(r["score"], 3),
+                                    "session_id": r["metadata"].get("session_id", ""),
+                                }
+                                for r in sim_results
+                            ]
+                            _similar_cache[subject_id] = {
+                                "cluster_id": current_cid,
+                                "ts": time.monotonic(),
+                                "results": sim_out,
+                            }
+                    except Exception:
+                        pass
+
+                if cached_sim := _similar_cache.get(subject_id):
+                    if cached_sim.get("results"):
+                        subject_out["similar_movements"] = cached_sim["results"]
 
                 # Include SMPL params and UV texture if available
                 if pr.smpl_params is not None:

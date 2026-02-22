@@ -169,6 +169,7 @@ export interface SubjectData {
   jersey_gemini_response?: string;
   team_id?: number | null;
   team_color?: string | null;
+  similar_movements?: SimilarMovement[];
 }
 
 /** Gemini API usage statistics from backend. */
@@ -245,6 +246,8 @@ export interface SubjectState {
   jerseyColor: string | null;
   jerseyCropBase64: string | null;
   jerseyGeminiResponse: string | null;
+  /** Similar movements from VectorAI cross-session search. */
+  similarMovements?: SimilarMovement[];
   /** Visual K-Means team clustering results. */
   teamId: number | null;
   teamColor: string | null;
@@ -473,3 +476,51 @@ export type GameWsMessage =
   | GameProgressMessage
   | GameCompleteMessage
   | { type: "heartbeat" };
+
+// ---------------------------------------------------------------------------
+// VectorAI Dashboard Types
+// ---------------------------------------------------------------------------
+
+/** Similar movement match from VectorAI. */
+export interface SimilarMovement {
+  activity_label: string;
+  score: number;
+  session_id: string;
+}
+
+/** Stats for a single VectorAI collection. */
+export interface CollectionStats {
+  count: number;
+  total_vectors: number;
+  indexed_vectors: number;
+  deleted_vectors: number;
+  storage_bytes: number;
+  index_memory_bytes: number;
+  error?: string;
+}
+
+/** Stats response for all collections. */
+export type VectorStats = Record<string, CollectionStats>;
+
+/** A single vector entry from the MongoDB mirror. */
+export interface VectorEntry {
+  vector_uuid: string;
+  collection: string;
+  metadata: Record<string, unknown>;
+  timestamp: number;
+  created_at: string;
+  person_id?: string;
+  session_id?: string;
+  activity_label?: string;
+  person_crop_b64?: string;
+}
+
+/** Paginated response from /api/vectorai/entries. */
+export interface VectorEntriesResponse {
+  collection: string;
+  total: number;
+  offset: number;
+  limit: number;
+  entries: VectorEntry[];
+  error?: string;
+}

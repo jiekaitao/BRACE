@@ -746,7 +746,7 @@ export default function StackPage() {
           <div className="grid grid-cols-3 gap-3 my-5">
             {[
               { value: "1.6×", label: "Normal vs. pathological gait separation" },
-              { value: "473", label: "Automated tests" },
+              { value: "479", label: "Automated tests" },
               { value: "30 fps", label: "Real-time processing" },
             ].map(({ value, label }) => (
               <div
@@ -771,7 +771,79 @@ export default function StackPage() {
           </P>
         </Section>
 
-        {/* ─── SECTION 5: Architecture ─── */}
+        {/* ─── SECTION 5: Open Source Stack ─── */}
+        <Section
+          badge="Open Source"
+          badgeColor="orange"
+          title="How We Use Open Source Software"
+        >
+          <P>
+            The math above runs on a stack of open-source tools. Here&rsquo;s
+            how the most important ones fit together.
+          </P>
+
+          <H3>TensorRT — why 30 fps is possible</H3>
+          <P>
+            We never run PyTorch directly in production. On startup the backend
+            auto-exports YOLO11-pose to a <strong>TensorRT FP16</strong>{" "}
+            engine — NVIDIA&rsquo;s inference compiler that fuses layers,
+            quantizes to half-precision, and optimizes kernel scheduling for
+            the specific GPU. On an RTX 5090 this gives a
+            2&ndash;4&times; speedup over vanilla PyTorch. For 3D pose
+            estimation, <strong>ONNX Runtime</strong> handles RTMW3D with its
+            own CUDA execution provider.
+          </P>
+
+          <H3>VectorAI — cross-session movement memory</H3>
+          <P>
+            Every clustered movement segment is stored as a vector in{" "}
+            <strong>Actian VectorAI</strong>, a gRPC-based vector database
+            that runs as a required Docker service alongside the backend. This
+            is what makes cross-session comparison possible — &ldquo;find
+            every squat I&rsquo;ve done that looks like this one&rdquo; is a
+            nearest-neighbor query in the 42-dimensional SRP feature space.
+            Person re-ID embeddings (512D from OSNet) are also stored here,
+            giving persistent identity across sessions without needing the
+            user to re-register.
+          </P>
+
+          <H3>CLIP &amp; OSNet — knowing who is who</H3>
+          <P>
+            When someone walks off-camera and comes back, or a scene cut
+            resets the tracker, we need to recognize them again.{" "}
+            <strong>OSNet</strong> (512-dimensional, via torchreid) handles
+            fast per-frame appearance matching. <strong>CLIP</strong>{" "}
+            (768-dimensional, via HuggingFace Transformers) kicks in after
+            scene cuts where the appearance gap is larger. Body proportions
+            — height and limb ratios — provide an additional matching
+            signal that&rsquo;s invariant to clothing.
+          </P>
+
+          <H3>Personalized injury thresholds</H3>
+          <P>
+            The biomechanical thresholds above aren&rsquo;t one-size-fits-all.
+            During onboarding, a <strong>Gemini 2.5 Pro</strong> chat agent
+            interviews the user about their injury history and extracts a
+            structured profile. This feeds into per-injury threshold scaling
+            — a prior ACL tear tightens the FPPA limit, a hip injury lowers
+            the hip-drop threshold. The modifiers are applied every frame and
+            persist in <strong>MongoDB</strong> across sessions.
+          </P>
+
+          <H3>Team sports — basketball game analysis</H3>
+          <P>
+            For team sports we process full game video offline. Each player is
+            tracked across camera cuts with the re-ID pipeline, and{" "}
+            <strong>Gemini 2.5 Flash</strong> reads jersey numbers from
+            cropped player images. Teams are separated via K-Means on HSV
+            color histograms from the upper torso — more robust than parsing
+            color names. A risk engine consolidates per-player biomechanical
+            events into GREEN / YELLOW / RED status, with RED triggering a
+            pull recommendation to the coaching dashboard.
+          </P>
+        </Section>
+
+        {/* ─── SECTION 6: Architecture ─── */}
         <Section
           badge="Architecture"
           badgeColor="gray"
@@ -802,7 +874,7 @@ export default function StackPage() {
                   Quality
                 </div>
                 <div className="text-[10px] text-[#AFAFAF]">
-                  One-Euro Filter · Isolation Forest · CLIP-ReID
+                  TensorRT FP16 · One-Euro Filter · Isolation Forest · CLIP-ReID
                 </div>
               </div>
 
@@ -811,6 +883,7 @@ export default function StackPage() {
               <div className="flex flex-wrap justify-center gap-2">
                 {[
                   { label: "MongoDB", sub: "Sessions & profiles", color: "#FFF3D6", border: "#FFE4A0", text: "#E58600" },
+                  { label: "VectorAI", sub: "Movement search", color: "#DDF4FF", border: "#B8E8FF", text: "#1899D6" },
                   { label: "Gemini 2.5", sub: "Activity labels", color: "#F3E8FF", border: "#E0C8FF", text: "#9B59B6" },
                 ].map(({ label, sub, color, border, text }) => (
                   <div
@@ -844,9 +917,10 @@ export default function StackPage() {
           </P>
 
           <div className="text-xs text-[#AFAFAF] leading-relaxed mt-6 pt-4 border-t border-[#F0F0F0]">
-            Built with Next.js 15 · React 19 · TypeScript · Three.js · FastAPI ·
-            YOLO11-pose · WebSocket · Docker · MongoDB · Tailscale · Gemini 2.5
-            Pro · UMAP · scikit-learn
+            Built with Next.js 15 · React 19 · TypeScript · Tailwind CSS ·
+            Three.js · FastAPI · PyTorch · TensorRT · ONNX Runtime ·
+            YOLO11-pose · WebSocket · Docker · MongoDB · VectorAI · Tailscale ·
+            Gemini 2.5 Pro · UMAP · scikit-learn · torchreid · CLIP
           </div>
         </Section>
 

@@ -15,10 +15,12 @@ Internal client adapters:
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import time
 import uuid as _uuid
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import numpy as np
@@ -108,14 +110,17 @@ class _GrpcVectorAIClient:
         collection: str,
         vectors: list[list[float]],
         metadata: list[dict] | None = None,
-    ) -> None:
-        """Insert vectors with optional JSON metadata payload."""
+    ) -> list[str]:
+        """Insert vectors with optional JSON metadata payload. Returns UUIDs."""
         vec_ids = []
         vec_objs = []
         payloads = []
+        uuids: list[str] = []
 
         for i, vec_data in enumerate(vectors):
-            vec_ids.append(vdss_types_pb2.VectorIdentifier(uuid=str(_uuid.uuid4())))
+            uid = str(_uuid.uuid4())
+            uuids.append(uid)
+            vec_ids.append(vdss_types_pb2.VectorIdentifier(uuid=uid))
             vec_objs.append(vdss_types_pb2.Vector(
                 data=vec_data, dimension=len(vec_data),
             ))
@@ -144,6 +149,59 @@ class _GrpcVectorAIClient:
             )
             if resp.status.code != 0:
                 raise RuntimeError(resp.status.message)
+
+        return uuids
+
+    # --- get_vector_count ---
+    def get_vector_count(self, collection: str) -> int:
+        """Return the number of vectors in a collection."""
+        resp = self._stub.GetVectorCount(
+            vdss_service_pb2.GetVectorCountRequest(collection_name=collection)
+        )
+        if resp.status.code != 0:
+            raise RuntimeError(resp.status.message)
+        return resp.count
+
+    # --- get_stats ---
+    def get_stats(self, collection: str) -> dict:
+        """Return collection statistics."""
+        resp = self._stub.GetStats(
+            vdss_service_pb2.GetStatsRequest(collection_name=collection)
+        )
+        if resp.status.code != 0:
+            raise RuntimeError(resp.status.message)
+        s = resp.stats
+        return {
+            "total_vectors": s.total_vectors,
+            "indexed_vectors": s.indexed_vectors,
+            "deleted_vectors": s.deleted_vectors,
+            "storage_bytes": s.storage_bytes,
+            "index_memory_bytes": s.index_memory_bytes,
+        }
+
+    # --- get_vector ---
+    def get_vector(self, collection: str, uuid: str) -> dict:
+        """Retrieve a single vector by UUID."""
+        resp = self._stub.GetVector(
+            vdss_service_pb2.GetVectorRequest(
+                collection_name=collection,
+                vector_id=vdss_types_pb2.VectorIdentifier(uuid=uuid),
+            )
+        )
+        if resp.status.code != 0:
+            raise RuntimeError(resp.status.message)
+        meta = {}
+        if resp.payload and resp.payload.json:
+            try:
+                meta = json.loads(resp.payload.json)
+            except json.JSONDecodeError:
+                pass
+        return {
+            "uuid": uuid,
+            "vector": list(resp.vector.data) if resp.vector else [],
+            "dimension": resp.vector.dimension if resp.vector else 0,
+            "metadata": meta,
+        }
 
     # --- search ---
     def search(
@@ -288,6 +346,66 @@ class VectorAIStore:
                 client.create_collection(name, dimension=dim)
 
     # ------------------------------------------------------------------
+    # MongoDB mirror for dashboard browsing
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _write_mongo_mirror(
+        collection: str,
+        uuids: list[str],
+        metadata_list: list[dict],
+        extra_fields: dict | None = None,
+    ) -> None:
+        """Write vector entries to MongoDB for dashboard browsing (sync)."""
+        try:
+            from db import get_sync_collection
+            col = get_sync_collection("vector_entries")
+            now = datetime.now(timezone.utc)
+            docs = []
+            for i, uid in enumerate(uuids):
+                meta = metadata_list[i] if i < len(metadata_list) else {}
+                doc = {
+                    "vector_uuid": uid,
+                    "collection": collection,
+                    "metadata": meta,
+                    "timestamp": meta.get("timestamp", time.time()),
+                    "created_at": now,
+                }
+                if extra_fields:
+                    doc.update(extra_fields)
+                # Flatten common metadata fields for indexing
+                for key in ("person_id", "session_id", "activity_label"):
+                    if key in meta:
+                        doc[key] = meta[key]
+                docs.append(doc)
+            if docs:
+                col.insert_many(docs, ordered=False)
+        except Exception as e:
+            print(f"[vectorai] WARNING: mongo mirror write failed: {e}", flush=True)
+
+    # ------------------------------------------------------------------
+    # gRPC wrappers (public)
+    # ------------------------------------------------------------------
+
+    def get_vector_count(self, collection: str) -> int:
+        """Return vector count for a collection."""
+        if not self._available:
+            return 0
+        return self._client.get_vector_count(collection)
+
+    def get_stats(self, collection: str) -> dict:
+        """Return collection stats from gRPC."""
+        if not self._available:
+            return {}
+        return self._client.get_stats(collection)
+
+    def get_vector(self, collection: str, uuid: str) -> dict:
+        """Retrieve a single vector by UUID from gRPC."""
+        if not self._available:
+            return {}
+        return self._client.get_vector(collection, uuid)
+
+    # ------------------------------------------------------------------
     # Health
     # ------------------------------------------------------------------
 
@@ -311,20 +429,26 @@ class VectorAIStore:
         person_id: str,
         session_id: str,
         timestamp: float | None = None,
+        person_crop_b64: str | None = None,
     ) -> None:
         """Store a person appearance embedding (512D OSNet) for cross-session re-ID."""
         if not self._available:
             return
         try:
-            self._client.insert(
+            meta = {
+                "person_id": person_id,
+                "session_id": session_id,
+                "timestamp": timestamp or time.time(),
+            }
+            uuids = self._client.insert(
                 "person_embeddings",
                 vectors=[embedding.tolist()],
-                metadata=[{
-                    "person_id": person_id,
-                    "session_id": session_id,
-                    "timestamp": timestamp or time.time(),
-                }],
+                metadata=[meta],
             )
+            extra = {}
+            if person_crop_b64:
+                extra["person_crop_b64"] = person_crop_b64
+            self._write_mongo_mirror("person_embeddings", uuids, [meta], extra)
         except Exception as e:
             print(f"[vectorai] WARNING: store_person_embedding failed: {e}", flush=True)
 
@@ -379,17 +503,19 @@ class VectorAIStore:
         if not self._available:
             return
         try:
-            self._client.insert(
+            meta = {
+                "activity_label": activity_label,
+                "session_id": session_id,
+                "person_id": person_id,
+                "risk_score": risk_score,
+                "timestamp": timestamp or time.time(),
+            }
+            uuids = self._client.insert(
                 "motion_segments",
                 vectors=[features.tolist()],
-                metadata=[{
-                    "activity_label": activity_label,
-                    "session_id": session_id,
-                    "person_id": person_id,
-                    "risk_score": risk_score,
-                    "timestamp": timestamp or time.time(),
-                }],
+                metadata=[meta],
             )
+            self._write_mongo_mirror("motion_segments", uuids, [meta])
         except Exception as e:
             print(f"[vectorai] WARNING: store_motion_segment failed: {e}", flush=True)
 
@@ -435,14 +561,16 @@ class VectorAIStore:
         if not self._available:
             return
         try:
-            self._client.insert(
+            meta = {
+                "activity_name": activity_name,
+                "source": source,
+            }
+            uuids = self._client.insert(
                 "activity_templates",
                 vectors=[features.tolist()],
-                metadata=[{
-                    "activity_name": activity_name,
-                    "source": source,
-                }],
+                metadata=[meta],
             )
+            self._write_mongo_mirror("activity_templates", uuids, [meta])
         except Exception as e:
             print(f"[vectorai] WARNING: store_activity_template failed: {e}", flush=True)
 

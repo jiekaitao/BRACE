@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field, asdict
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 try:
@@ -293,15 +293,27 @@ async def research_endpoint(req: ResearchRequest):
 
 
 @router.post("/confirm-profile")
-async def confirm_profile(req: ConfirmProfileRequest):
+async def confirm_profile(req: ConfirmProfileRequest, authorization: str = Header(None)):
     """Save confirmed injury profile to user's MongoDB document."""
     risk_modifiers = profile_to_risk_modifiers(req.injury_profile)
 
-    if req.user_id:
+    # Resolve user: prefer auth token, fall back to body user_id
+    resolved_user_id = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1]
+        try:
+            from auth import validate_session
+        except ImportError:
+            from backend.auth import validate_session
+        resolved_user_id = await validate_session(token)
+    if not resolved_user_id and req.user_id:
+        resolved_user_id = req.user_id
+
+    if resolved_user_id:
         from bson import ObjectId
         users = get_collection("users")
         await users.update_one(
-            {"_id": ObjectId(req.user_id)},
+            {"_id": ObjectId(resolved_user_id)},
             {"$set": {
                 "injury_profile": req.injury_profile,
                 "risk_modifiers": risk_modifiers,
@@ -314,9 +326,20 @@ async def confirm_profile(req: ConfirmProfileRequest):
 @router.post("/save-research")
 async def save_research(
     body: dict,
+    authorization: str = Header(None),
 ):
     """Save research guidelines to user's MongoDB document."""
-    user_id = body.get("user_id")
+    # Resolve user: prefer auth token, fall back to body user_id
+    user_id = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1]
+        try:
+            from auth import validate_session
+        except ImportError:
+            from backend.auth import validate_session
+        user_id = await validate_session(token)
+    if not user_id:
+        user_id = body.get("user_id")
     guidelines = body.get("research_guidelines")
     if user_id and guidelines:
         from bson import ObjectId

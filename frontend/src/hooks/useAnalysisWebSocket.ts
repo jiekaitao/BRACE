@@ -107,6 +107,7 @@ export function useAnalysisWebSocket(
   const MAX_RTT_SAMPLES = 10;
   const [sessionId, setSessionId] = useState<string | null>(null);
   const iOSWebSocketCaptureRef = useRef(false);
+  const webrtcFallbackRef = useRef(false);
 
   useEffect(() => {
     if (typeof navigator === "undefined") return;
@@ -191,7 +192,7 @@ export function useAnalysisWebSocket(
   const sendFrame = useCallback(() => {
     const video = videoRef.current;
     const hasSrcObject = video?.srcObject instanceof MediaStream;
-    const webcamOverWebSocket = mode === "webcam" && (iOSWebSocketCaptureRef.current || !hasSrcObject);
+    const webcamOverWebSocket = mode === "webcam" && (iOSWebSocketCaptureRef.current || webrtcFallbackRef.current || !hasSrcObject);
     if (mode === "webcam" && !webcamOverWebSocket) return; // WebRTC mode uses native video track
     const ws = wsRef.current;
     if (!video || !ws || ws.readyState !== WebSocket.OPEN) return;
@@ -495,6 +496,11 @@ export function useAnalysisWebSocket(
             state.teamColor = subjectData.team_color ?? null;
           }
 
+          // Similar movements from VectorAI
+          if (subjectData.similar_movements) {
+            state.similarMovements = subjectData.similar_movements;
+          }
+
           // Accumulate velocity history (skip during replay — use cached first-pass data)
           if (subjectData.velocity !== undefined && !replayingRef.current) {
             state.velocity.values.push(subjectData.velocity);
@@ -728,8 +734,11 @@ export function useAnalysisWebSocket(
               if (!stopped && pc) pc.setRemoteDescription(answer);
             })
             .catch((err) => {
-              console.error("WebRTC offer error:", err);
-              dc?.close();
+              console.error("WebRTC offer failed, falling back to WebSocket:", err);
+              webrtcFallbackRef.current = true;
+              if (pc) { pc.close(); pc = null; }
+              if (dc) { dc.close(); dc = null; }
+              if (!stopped) openWs(getWsUrl(), true);
             });
         }
       } else {
@@ -741,6 +750,7 @@ export function useAnalysisWebSocket(
 
     return () => {
       stopped = true;
+      webrtcFallbackRef.current = false;
       if (ws) ws.close();
       if (wsRef.current) wsRef.current = null;
       if (dc) dc.close();

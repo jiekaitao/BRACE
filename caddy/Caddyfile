@@ -3,7 +3,7 @@
 :80 {
 	# Route WebSocket and API paths to backend for all hosts
 	@backendpaths {
-		path /ws/* /api/*
+		path /ws/* /api/* /rtc/*
 	}
 	handle @backendpaths {
 		reverse_proxy backend:8000 backend-cpu:8000 {
