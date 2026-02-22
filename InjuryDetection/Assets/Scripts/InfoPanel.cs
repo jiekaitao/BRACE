@@ -20,7 +20,7 @@ public class InfoPanel : MonoBehaviour
     [SerializeField] private float downOffset = 1.1f;
 
     [Tooltip("Horizontal offset to the right (positive = further right)")]
-    [SerializeField] private float rightOffset = 0.55f;
+    [SerializeField] private float rightOffset = 0f;
 
     [Tooltip("TMP font size for title")]
     [SerializeField] private float titleFontSize = 56f;
@@ -133,6 +133,13 @@ public class InfoPanel : MonoBehaviour
         // Body
         var sb = new System.Text.StringBuilder();
 
+        // Selection status (helps diagnose if server got the select message)
+        string selStr = data.selected
+            ? "<color=#00ff00>SELECTED</color>"
+            : "<color=#ffcc00>PENDING</color>";
+        sb.AppendLine($"Status: {selStr}");
+
+        // Phase
         if (data.quality?.movement_phase != null)
         {
             var mp = data.quality.movement_phase;
@@ -143,25 +150,44 @@ public class InfoPanel : MonoBehaviour
             sb.AppendLine($"Phase: {Capitalize(data.phase)}");
         }
 
+        // Top-level stats (available even without quality data)
+        if (data.velocity > 0.001f || data.rolling_velocity > 0.001f)
+            sb.AppendLine($"Velocity: {data.velocity:F2}  Rolling: {data.rolling_velocity:F2}");
+
+        if (data.consistency_score > 0.001f)
+            sb.AppendLine($"Consistency: {data.consistency_score:F2}");
+
+        if (data.n_segments > 0)
+            sb.AppendLine($"Segments: {data.n_segments}  Clusters: {data.n_clusters}");
+
+        // Form score (requires quality)
         if (data.quality != null)
         {
+            sb.AppendLine();
             int form = Mathf.RoundToInt(data.quality.form_score);
             string formColor = form >= 80 ? "#00ff00" : form >= 60 ? "#ffcc00" : "#ff3333";
             string formLabel = form >= 80 ? "Good" : form >= 60 ? "Fair" : "Poor";
             sb.AppendLine($"Form: <color={formColor}>{form}/100  ({formLabel})</color>");
+
+            if (data.quality.concussion_rating > 0.01f)
+            {
+                string concColor = data.quality.concussion_rating > 50f ? "#ff3333" : data.quality.concussion_rating > 20f ? "#ffcc00" : "#00ff00";
+                sb.AppendLine($"Concussion Risk: <color={concColor}>{data.quality.concussion_rating:F0}/100</color>");
+            }
         }
 
-        sb.AppendLine();
-
+        // Biomechanics (requires quality)
         if (data.quality?.biomechanics != null)
         {
             var bio = data.quality.biomechanics;
+            sb.AppendLine();
             sb.AppendLine("<color=#88ccff>-- Biomechanics --</color>");
-            sb.AppendLine($"Knee (FPPA):  L {bio.fppa_left:F1}°   R {bio.fppa_right:F1}°");
-            sb.AppendLine($"Hip Drop: {bio.hip_drop:F1}°    Trunk Lean: {bio.trunk_lean:F1}°");
+            sb.AppendLine($"Knee (FPPA):  L {bio.fppa_left:F1}\u00b0   R {bio.fppa_right:F1}\u00b0");
+            sb.AppendLine($"Hip Drop: {bio.hip_drop:F1}\u00b0    Trunk Lean: {bio.trunk_lean:F1}\u00b0");
             sb.AppendLine($"Asymmetry: {bio.asymmetry:F1}%");
         }
 
+        // Injury risks (requires quality)
         if (data.quality?.injury_risks != null && data.quality.injury_risks.Count > 0)
         {
             sb.AppendLine();
@@ -173,6 +199,7 @@ public class InfoPanel : MonoBehaviour
             }
         }
 
+        // Fatigue (top-level field, not inside quality)
         if (data.fatigue_index > 0.01f)
         {
             sb.AppendLine();
@@ -180,6 +207,7 @@ public class InfoPanel : MonoBehaviour
             sb.AppendLine($"Fatigue: <color={fatColor}>{data.fatigue_index:P0}</color>");
         }
 
+        // Coaching tips (requires quality)
         if (data.quality?.active_guideline?.form_cues != null
             && data.quality.active_guideline.form_cues.Count > 0)
         {
@@ -193,6 +221,16 @@ public class InfoPanel : MonoBehaviour
         {
             sb.AppendLine();
             sb.AppendLine($"<color=#ffcc00>>> {data.alert_text}</color>");
+        }
+
+        // Show message when quality data hasn't arrived yet
+        if (data.quality == null)
+        {
+            sb.AppendLine();
+            if (!data.selected)
+                sb.AppendLine("<color=#ffcc00>Tap subject to load detailed stats...</color>");
+            else
+                sb.AppendLine("<color=#ffcc00>Collecting analysis data...</color>");
         }
 
         _bodyText.text = sb.ToString();
