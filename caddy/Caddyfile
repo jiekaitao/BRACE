@@ -1,20 +1,23 @@
 # Caddy reverse proxy — routes by Host header
 # Sits behind Tailscale Funnel on port 443, so no TLS here.
 :80 {
-	@backend host ws.braceml.com
-	handle @backend {
+	# Route WebSocket and API paths to backend for all hosts
+	@backendpaths {
+		path /ws/* /api/*
+	}
+	handle @backendpaths {
 		reverse_proxy backend:8000 backend-cpu:8000 {
 			lb_policy first
 		}
 	}
 
-	@frontend host braceml.com baby-gator.tailea0e34.ts.net
+	@frontend host braceml.com baby-gator.tailea0e34.ts.net ws.braceml.com
 	handle @frontend {
-		reverse_proxy frontend:3000
+		reverse_proxy host.docker.internal:3000
 	}
 
 	# Fallback: send everything else to frontend
 	handle {
-		reverse_proxy frontend:3000
+		reverse_proxy host.docker.internal:3000
 	}
 }

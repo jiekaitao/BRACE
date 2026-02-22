@@ -53,8 +53,10 @@ const EMPTY_SMPL_FRAME: SmplFrame = {
   currentTime: 0,
 };
 
+export type ConnectionStatus = "disconnected" | "connecting" | "connected";
+
 export interface UseAnalysisWebSocketResult {
-  connected: boolean;
+  connected: ConnectionStatus;
   replaying: boolean;
   // Selected subject's data (for React state-driven UI)
   phase: "calibrating" | "normal" | "anomaly";
@@ -115,7 +117,7 @@ export function useAnalysisWebSocket(
     iOSWebSocketCaptureRef.current = isIOS;
   }, []);
 
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState<ConnectionStatus>("disconnected");
   const [replaying, setReplaying] = useState(false);
   const replayingRef = useRef(false);
   const [phase, setPhase] = useState<"calibrating" | "normal" | "anomaly">("calibrating");
@@ -187,9 +189,10 @@ export function useAnalysisWebSocket(
 
   // Send a single frame as binary blob with 8-byte Float64 video timestamp prefix
   const sendFrame = useCallback(() => {
-    const webcamOverWebSocket = mode === "webcam" && iOSWebSocketCaptureRef.current;
-    if (mode === "webcam" && !webcamOverWebSocket) return; // WebRTC mode uses native video track
     const video = videoRef.current;
+    const hasSrcObject = video?.srcObject instanceof MediaStream;
+    const webcamOverWebSocket = mode === "webcam" && (iOSWebSocketCaptureRef.current || !hasSrcObject);
+    if (mode === "webcam" && !webcamOverWebSocket) return; // WebRTC mode uses native video track
     const ws = wsRef.current;
     if (!video || !ws || ws.readyState !== WebSocket.OPEN) return;
     if (video.paused || video.ended || !video.videoWidth) return;
@@ -281,7 +284,7 @@ export function useAnalysisWebSocket(
   // Connect WebSocket
   useEffect(() => {
     if (!active) {
-      setConnected(false);
+      setConnected("disconnected");
       return;
     }
 
@@ -298,6 +301,7 @@ export function useAnalysisWebSocket(
 
     function tryConnect() {
       if (stopped) return;
+      setConnected("connecting");
 
       const handleMessage = (event: MessageEvent) => {
         // Debug stats: track RTT and incoming bytes
@@ -516,9 +520,13 @@ export function useAnalysisWebSocket(
                 clusterIds: eu.cluster_ids,
                 currentIdx: eu.current_idx,
               };
-            } else if (eu.type === "append" && eu.new_points && eu.new_cluster_ids) {
+            } else if (eu.type === "append" && eu.new_points && eu.new_cluster_ids && !replayingRef.current) {
+              // Only append during first pass to prevent point count drift
               state.embedding.points.push(...eu.new_points);
               state.embedding.clusterIds.push(...eu.new_cluster_ids);
+              state.embedding.currentIdx = eu.current_idx;
+            } else if (eu.type === "current_only" && eu.current_idx !== undefined) {
+              // Nearest-neighbor snap: just update which point is "current"
               state.embedding.currentIdx = eu.current_idx;
             }
           }
@@ -621,12 +629,12 @@ export function useAnalysisWebSocket(
           replayingRef.current = false;
           setSelectedSubjectId(null);
           setReplaying(false);
-          setConnected(true);
+          setConnected("connected");
         };
         ws.onmessage = handleMessage;
         ws.onclose = () => {
           clearTimeout(timeout);
-          setConnected(false);
+          setConnected("disconnected");
           wsRef.current = null;
           if (reconnect && !stopped) {
             setTimeout(tryConnect, retryDelay);
@@ -645,7 +653,11 @@ export function useAnalysisWebSocket(
         } else {
           if (!videoElement) return;
           const stream = videoElement.srcObject as MediaStream;
-          if (!stream) return;
+          if (!stream) {
+            // Demo video — no MediaStream, use WebSocket with canvas capture
+            openWs(getWsUrl(), true);
+            return;
+          }
 
           pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
           stream.getTracks().forEach((track) => pc!.addTrack(track, stream));
@@ -660,11 +672,11 @@ export function useAnalysisWebSocket(
             replayingRef.current = false;
             setSelectedSubjectId(null);
             setReplaying(false);
-            setConnected(true);
+            setConnected("connected");
           };
           dc.onmessage = handleMessage;
           dc.onclose = () => {
-            setConnected(false);
+            setConnected("disconnected");
             if (!stopped) {
               setTimeout(tryConnect, retryDelay);
               retryDelay = Math.min(retryDelay * 1.5, MAX_RETRY_DELAY);
@@ -705,7 +717,7 @@ export function useAnalysisWebSocket(
       if (wsRef.current) wsRef.current = null;
       if (dc) dc.close();
       if (pc) pc.close();
-      setConnected(false);
+      setConnected("disconnected");
     };
   }, [active, mode, getWsUrl, sessionId, videoElement]);
 
@@ -751,7 +763,7 @@ export function useAnalysisWebSocket(
 
   // Animation loop for webcam frame capture
   useEffect(() => {
-    if (!connected || !active || mode !== "webcam") return;
+    if (connected !== "connected" || !active || mode !== "webcam") return;
 
     function loop() {
       sendFrame();

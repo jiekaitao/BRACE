@@ -806,8 +806,17 @@ class MovementQualityTracker:
         self._current_degrading_joints: list[int] = []
         self._current_movement_phase: dict[str, Any] | None = None
 
-        # Concussion / Head tracking
-        self._head_jerk_ema = 0.0
+        # Concussion / Head tracking (head-specific kinematics)
+        self._head_prev_pos: np.ndarray | None = None  # nose position (2D, hip-centered px)
+        self._head_prev_vel: np.ndarray | None = None  # nose velocity (m/s)
+        self._head_prev_ear_angle: float | None = None  # ear-to-ear angle (rad)
+        self._head_vel_baseline_ema: float = 0.0  # adaptive baseline of head speed
+        self._head_vel_baseline_initialized: bool = False
+        self._head_linear_accel_g: float = 0.0  # current head acceleration (g)
+        self._head_angular_vel: float = 0.0  # current head angular velocity (rad/s)
+        self._head_spike_z: float = 0.0  # z-score of current head speed vs baseline
+        self._concussion_peak_value: float = 0.0  # peak-hold value
+        self._concussion_peak_hold_frames: int = 0  # frames remaining in hold
         self._current_concussion_rating = 0.0
         
         # Fatigue Rating
@@ -843,6 +852,8 @@ class MovementQualityTracker:
         video_time: float = 0.0,
         raw_joints: np.ndarray | None = None,
         joint_vis: list[float] | None = None,
+        head_landmarks: np.ndarray | None = None,
+        shoulder_width_px: float = 0.0,
     ) -> None:
         """Per-frame quality assessment. Call after SRP normalization.
 
@@ -857,6 +868,8 @@ class MovementQualityTracker:
                         Falls back to srp_joints if not provided.
             joint_vis: Per-feature-joint visibility (0-1). Indices match FEATURE_INDICES.
                        When provided, biomechanical angles are skipped for invisible joints.
+            head_landmarks: (3, 2) hip-centered [nose, left_ear, right_ear] in pixels, or None.
+            shoulder_width_px: Inter-shoulder distance in pixels for scale estimation.
         """
         self._frame_count += 1
         ndim = srp_joints.shape[1] if srp_joints.ndim == 2 else 2
@@ -944,28 +957,8 @@ class MovementQualityTracker:
         self._curvature_ema = 0.1 * kappa + 0.9 * self._curvature_ema
         self._jerk_ema = 0.1 * jerk + 0.9 * self._jerk_ema
 
-        # --- Concussion Risk / Head Jerk ---
-        # Track head translation in un-rotated space to capture impact/jerk
-        if raw_joints is not None and raw_joints.shape[0] > 0:
-            # Determine if we have actual head joints (0: nose)
-            has_head = False
-            if len(raw_joints) > 0 and len(raw_joints) > 31:
-                # We must map back from 33-point MP indices to figure out if it's there
-                has_head = True # If len > 14 we are probably receiving all 33
-                
-            # Concussion rating - base on head acceleration proxy
-            head_proxy = None
-            if len(raw_joints) == 33 and np.linalg.norm(raw_joints[0][:2]) > 0:
-                head_proxy = raw_joints[0][:2] # Use nose
-            else:
-                # Proxied from shoulders
-                head_proxy = (srp_joints[0] + srp_joints[1]) / 2.0 
-            
-            # we'll use the overall jerk_ema to drive the rating for now, scaled 0-100
-            # For actual impact we would track `np.linalg.norm(head_vel - last_head_vel) / dt`
-            raw_concuss = (self._jerk_ema * 500.0) 
-            self._head_jerk_ema = 0.2 * raw_concuss + 0.8 * self._head_jerk_ema
-            self._current_concussion_rating = float(np.clip(self._head_jerk_ema, 0.0, 100.0))
+        # --- Concussion Risk / Head Kinematics ---
+        self._update_concussion_rating(head_landmarks, shoulder_width_px)
 
         # --- Fatigue Rating ---
         # Convert fatigue_index (0.0 - 1.0) to a 0-100 scale rating
@@ -1097,6 +1090,131 @@ class MovementQualityTracker:
             self._fatigue_timeline_fatigue.append(round(fatigue_index, 3))
             self._fatigue_timeline_form.append(round(self._current_form_score, 1))
             self._fatigue_timeline_version += 1
+
+    def _update_concussion_rating(
+        self,
+        head_landmarks: np.ndarray | None,
+        shoulder_width_px: float,
+    ) -> None:
+        """Compute concussion risk from head-specific kinematics.
+
+        Uses nose position for linear acceleration and ear-to-ear angle for
+        angular velocity.  Score is peak-held then decayed so it doesn't flicker.
+
+        Args:
+            head_landmarks: (3, 2) hip-centered [nose, left_ear, right_ear] in pixels,
+                            or None when head keypoints are not visible.
+            shoulder_width_px: Inter-shoulder distance in pixels (for px→m scaling).
+        """
+        dt = 1.0 / self.fps
+        _PEAK_HOLD_FRAMES = 45  # ~1.5s at 30fps
+        _DECAY_FACTOR = 0.92
+
+        if head_landmarks is None:
+            # Graceful degradation: decay existing score, don't accumulate
+            if self._concussion_peak_hold_frames > 0:
+                self._concussion_peak_hold_frames -= 1
+            else:
+                self._concussion_peak_value *= _DECAY_FACTOR
+            self._current_concussion_rating = float(np.clip(self._concussion_peak_value, 0.0, 100.0))
+            return
+
+        nose = head_landmarks[0]  # (2,)
+        left_ear = head_landmarks[1]
+        right_ear = head_landmarks[2]
+
+        # --- Pixel → meter scaling ---
+        # Average shoulder width ~0.40m (anthropometric reference)
+        if shoulder_width_px > 1.0:
+            px_to_m = 0.40 / shoulder_width_px
+        else:
+            px_to_m = 0.002  # fallback ~480px frame
+
+        # --- Head linear velocity (m/s) ---
+        if self._head_prev_pos is not None:
+            displacement_px = nose - self._head_prev_pos
+            head_vel = displacement_px * px_to_m / dt  # m/s
+        else:
+            head_vel = np.zeros(2)
+        self._head_prev_pos = nose.copy()
+
+        head_speed = float(np.linalg.norm(head_vel))
+
+        # --- Head linear acceleration (g) ---
+        if self._head_prev_vel is not None:
+            accel_vec = (head_vel - self._head_prev_vel) / dt
+            accel_g = float(np.linalg.norm(accel_vec)) / 9.81
+        else:
+            accel_g = 0.0
+        self._head_prev_vel = head_vel.copy()
+        self._head_linear_accel_g = accel_g
+
+        # --- Head angular velocity (rad/s) ---
+        ear_vec = right_ear - left_ear
+        ear_angle = float(np.arctan2(ear_vec[1], ear_vec[0]))
+        if self._head_prev_ear_angle is not None:
+            # Unwrap angle difference to handle ±π crossover
+            d_angle = ear_angle - self._head_prev_ear_angle
+            d_angle = (d_angle + math.pi) % (2 * math.pi) - math.pi
+            angular_vel = abs(d_angle) / dt  # rad/s
+        else:
+            angular_vel = 0.0
+        self._head_prev_ear_angle = ear_angle
+        self._head_angular_vel = angular_vel
+
+        # --- Adaptive baseline (EMA of head speed) ---
+        # α=0.02: adapts in ~50 frames (1.7s) so normal athletic motion
+        # raises the baseline quickly, preventing false spike z-scores.
+        _BASELINE_ALPHA = 0.02
+        if not self._head_vel_baseline_initialized:
+            self._head_vel_baseline_ema = head_speed
+            self._head_vel_baseline_initialized = True
+        else:
+            self._head_vel_baseline_ema = (
+                _BASELINE_ALPHA * head_speed
+                + (1 - _BASELINE_ALPHA) * self._head_vel_baseline_ema
+            )
+
+        # Z-score of current speed vs baseline
+        baseline = max(self._head_vel_baseline_ema, 0.01)
+        z_score = (head_speed - baseline) / baseline
+        self._head_spike_z = max(z_score, 0.0)
+
+        # --- Composite score (0–100) with dead zones ---
+        # Dead zones: normal athletic motion (running, jumping, head turns)
+        # doesn't score.  Only motion above these floors contributes.
+        #
+        # Video-based 2D estimation at 30fps amplifies noise through
+        # double-differentiation, so floors are set above typical
+        # basketball values (5-8g accel, 8-12 rad/s angular).
+        _ACCEL_FLOOR_G = 5.0       # below 5g = normal athletic motion
+        _ACCEL_RANGE_G = 45.0      # 5g → 50g maps to 0 → 40 pts
+        _ANGULAR_FLOOR_RPS = 10.0  # below 10 rad/s = normal head turns
+        _ANGULAR_RANGE_RPS = 20.0  # 10 → 30 rad/s maps to 0 → 35 pts
+        _SPIKE_FLOOR_Z = 3.0       # z-score below 3 = normal variation
+        _SPIKE_RANGE_Z = 7.0       # z 3 → 10 maps to 0 → 25 pts
+
+        accel_excess = max(accel_g - _ACCEL_FLOOR_G, 0.0)
+        accel_component = min(accel_excess / _ACCEL_RANGE_G, 1.0) * 40.0
+
+        angular_excess = max(angular_vel - _ANGULAR_FLOOR_RPS, 0.0)
+        angular_component = min(angular_excess / _ANGULAR_RANGE_RPS, 1.0) * 35.0
+
+        spike_excess = max(self._head_spike_z - _SPIKE_FLOOR_Z, 0.0)
+        spike_component = min(spike_excess / _SPIKE_RANGE_Z, 1.0) * 25.0
+
+        raw_score = accel_component + angular_component + spike_component
+
+        # --- Peak hold + decay ---
+        if raw_score > self._concussion_peak_value:
+            self._concussion_peak_value = raw_score
+            self._concussion_peak_hold_frames = _PEAK_HOLD_FRAMES
+        elif self._concussion_peak_hold_frames > 0:
+            self._concussion_peak_hold_frames -= 1
+        else:
+            self._concussion_peak_value *= _DECAY_FACTOR
+
+        self._current_concussion_rating = float(np.clip(self._concussion_peak_value, 0.0, 100.0))
 
     def analyze_cluster_quality(
         self,
@@ -1414,6 +1532,11 @@ class MovementQualityTracker:
         biomech["com_velocity"] = round(self._com_velocity, 3)
         biomech["com_sway"] = round(self._com_sway, 3)
 
+        # Head kinematics (concussion tracking)
+        biomech["head_accel_g"] = round(self._head_linear_accel_g, 2)
+        biomech["head_angular_vel"] = round(self._head_angular_vel, 2)
+        biomech["head_spike_z"] = round(self._head_spike_z, 2)
+
         result["biomechanics"] = biomech
 
         # Injury risks (Phase 1D)
@@ -1472,7 +1595,16 @@ class MovementQualityTracker:
         self._current_joint_deviations = None
         self._current_degrading_joints = []
         self._current_movement_phase = None
-        self._head_jerk_ema = 0.0
+        self._head_prev_pos = None
+        self._head_prev_vel = None
+        self._head_prev_ear_angle = None
+        self._head_vel_baseline_ema = 0.0
+        self._head_vel_baseline_initialized = False
+        self._head_linear_accel_g = 0.0
+        self._head_angular_vel = 0.0
+        self._head_spike_z = 0.0
+        self._concussion_peak_value = 0.0
+        self._concussion_peak_hold_frames = 0
         self._current_concussion_rating = 0.0
         self._current_fatigue_rating = 0.0
         self._fatigue_timeline_timestamps.clear()

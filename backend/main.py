@@ -904,6 +904,15 @@ def _build_vr_response(
     }
 
 
+async def _run_analysis_bg(analyzer: "StreamingAnalyzer", subject_id: str) -> None:
+    """Run segmentation/clustering analysis in background thread."""
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(None, analyzer.run_analysis)
+    finally:
+        analyzer._analysis_pending = False
+
+
 async def _handle_webcam_mode(
     websocket: WebSocket, cluster_threshold: float, target_fps: float,
     risk_modifiers: Any = None, client_type: str = "web",
@@ -1190,7 +1199,12 @@ async def _handle_webcam_mode(
 
                 # Handle UMAP embedding (non-blocking: refit runs in background)
                 embedding_update = None
-                if analyzer.needs_umap_refit():
+
+                # Check for cached refit result first (from background task)
+                if getattr(analyzer, '_umap_refit_result', None) is not None:
+                    embedding_update = analyzer._umap_refit_result
+                    analyzer._umap_refit_result = None
+                elif analyzer.needs_umap_refit():
                     if not getattr(analyzer, '_umap_refit_pending', False):
                         analyzer._umap_refit_pending = True
 
@@ -1202,10 +1216,6 @@ async def _handle_webcam_mode(
                                 a._umap_refit_pending = False
 
                         asyncio.create_task(_umap_refit_bg())
-                    # Serve cached refit result if available
-                    if hasattr(analyzer, '_umap_refit_result') and analyzer._umap_refit_result is not None:
-                        embedding_update = analyzer._umap_refit_result
-                        analyzer._umap_refit_result = None
                 elif len(analyzer.features_list) > 0 and analyzer._umap_mapper is not None:
                     feat = analyzer.features_list[-1]
                     embedding_update = analyzer.run_umap_transform(feat)

@@ -71,6 +71,12 @@ try:
 except ImportError:
     from movement_quality import MovementQualityTracker
 
+# Head landmark indices in MediaPipe 33-point layout (for concussion tracking)
+_HEAD_NOSE = 0
+_HEAD_LEFT_EAR = 7
+_HEAD_RIGHT_EAR = 8
+_HEAD_VISIBILITY_THRESHOLD = 0.3
+
 
 
 class StreamingAnalyzer:
@@ -147,6 +153,9 @@ class StreamingAnalyzer:
         self._velocity_window: deque[float] = deque(maxlen=300)  # ~10s at 30fps
         self._fatigue_index: float = 0.0
         self._fatigue_ema: float = 0.0
+
+        # Head landmark filters (tighter smoothing for derivative-based concussion tracking)
+        self._head_filters: dict[tuple[int, int], OneEuroFilter] = {}
 
         # Movement quality tracker (biomechanics, form scoring, fatigue detection)
         self._quality_tracker = MovementQualityTracker(fps=fps, risk_modifiers=risk_modifiers)
@@ -295,6 +304,34 @@ class StreamingAnalyzer:
         current_label = self._activity_labels.get(cluster_id) if cluster_id is not None else None
         self._quality_tracker.set_activity_label(current_label)
 
+        # --- Extract + smooth head landmarks for concussion tracking ---
+        head_landmarks = None
+        shoulder_width_px = 0.0
+        head_indices = [_HEAD_NOSE, _HEAD_LEFT_EAR, _HEAD_RIGHT_EAR]
+        head_vis = [float(landmarks_xyzv[idx, 3]) for idx in head_indices]
+        if all(v >= _HEAD_VISIBILITY_THRESHOLD for v in head_vis):
+            # Hip-center the head landmarks (same origin as body joints)
+            raw_head = np.array([
+                landmarks_xyzv[idx, :2].astype(np.float64) - pelvis[:2]
+                for idx in head_indices
+            ])  # shape (3, 2): [nose, left_ear, right_ear]
+            # Apply OneEuroFilter (tighter than body: min_cutoff=1.0, beta=0.005)
+            smoothed_head = np.copy(raw_head)
+            for h in range(raw_head.shape[0]):
+                for c in range(raw_head.shape[1]):
+                    key = (h, c)
+                    if key not in self._head_filters:
+                        self._head_filters[key] = OneEuroFilter(
+                            freq=self.fps, min_cutoff=1.0, beta=0.005,
+                        )
+                    smoothed_head[h, c] = self._head_filters[key](float(raw_head[h, c]))
+            head_landmarks = smoothed_head
+
+        # Shoulder width in pixels for pixel→meter scaling
+        ls = landmarks_xyzv[LEFT_SHOULDER, :2].astype(np.float64)
+        rs = landmarks_xyzv[RIGHT_SHOULDER, :2].astype(np.float64)
+        shoulder_width_px = float(np.linalg.norm(ls - rs))
+
         self._quality_tracker.process_frame(
             srp_joints=srp_joints,
             cluster_id=cluster_id,
@@ -304,6 +341,8 @@ class StreamingAnalyzer:
             video_time=self.frame_count / self.fps,
             raw_joints=smoothed_joints,
             joint_vis=joint_vis,
+            head_landmarks=head_landmarks,
+            shoulder_width_px=shoulder_width_px,
         )
 
         return self._build_response(frame_idx, landmarks_xyzv, seg_info)
@@ -436,6 +475,7 @@ class StreamingAnalyzer:
         self._activity_labels = {}
         self._pending_classification = set()
         self._frozen = False
+        self._head_filters.clear()
         self.velocity_list.clear()
         self._rolling_velocity = 0.0
         self._peak_velocity = 0.0
@@ -464,6 +504,7 @@ class StreamingAnalyzer:
             self._last_sent_reps_version = 0
         # Reset temporal filters — the discontinuity would cause ringing
         self._joint_filters.clear()
+        self._head_filters.clear()
 
     # --- UMAP embedding methods ---
 
@@ -519,36 +560,24 @@ class StreamingAnalyzer:
         }
 
     def run_umap_transform(self, feat: np.ndarray) -> dict[str, Any] | None:
-        """Project a single new point using existing UMAP fit."""
-        if self._umap_mapper is None:
+        """Find the nearest existing embedding point in feature space.
+
+        Instead of projecting a single point through UMAP (which is very noisy),
+        find the nearest existing feature and snap the current index to it.
+        """
+        if self._umap_mapper is None or not self._umap_embeddings:
             return None
 
         try:
-            point = self._umap_mapper.transform(feat.reshape(1, -1))
-            new_point = point[0].tolist()
-
-            # EMA smoothing to reduce jitter
-            if self._umap_embeddings:
-                alpha = 0.3
-                prev = self._umap_embeddings[-1]
-                new_point = [
-                    alpha * new_point[i] + (1 - alpha) * prev[i]
-                    for i in range(len(new_point))
-                ]
-
-            # Get cluster for this point
-            idx = len(self.features_list) - 1
-            seg = self._frame_to_segment.get(idx)
-            cid = seg.get("cluster") if seg else None
-
-            self._umap_embeddings.append(new_point)
-            self._umap_cluster_ids.append(cid)
+            # Compare against features that have embedding points
+            n_emb = len(self._umap_embeddings)
+            features = np.stack(self.features_list[:n_emb], axis=0)
+            distances = np.linalg.norm(features - feat.reshape(1, -1), axis=1)
+            nearest_idx = int(np.argmin(distances))
 
             return {
-                "type": "append",
-                "new_points": [new_point],
-                "new_cluster_ids": [cid],
-                "current_idx": len(self._umap_embeddings) - 1,
+                "type": "current_only",
+                "current_idx": nearest_idx,
             }
         except Exception:
             return None

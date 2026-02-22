@@ -243,39 +243,22 @@ export default function MovementQualityPanel({
         </Card>
       )}
 
-      {/* Ratings */}
-      {(quality.concussion_rating !== undefined || quality.fatigue_rating !== undefined) && (
+      {/* Concussion Risk */}
+      {quality.concussion_rating !== undefined && (
         <Card>
           <h3 className="text-sm font-bold text-[#3C3C3C] uppercase tracking-[0.03em] mb-3">
-            Health Ratings
+            Concussion Risk
           </h3>
-          <div className="flex flex-col gap-2">
-            {quality.concussion_rating !== undefined && (
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-[#777777]">Concussion Risk</span>
-                <span
-                  className="text-xs font-bold"
-                  style={{
-                    color: quality.concussion_rating > 70 ? "#EA2B2B" : quality.concussion_rating > 40 ? "#F5A623" : "#58CC02"
-                  }}
-                >
-                  {quality.concussion_rating.toFixed(1)} / 100
-                </span>
-              </div>
-            )}
-            {quality.fatigue_rating !== undefined && (
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-[#777777]">Fatigue Score</span>
-                <span
-                  className="text-xs font-bold"
-                  style={{
-                    color: quality.fatigue_rating > 60 ? "#EA2B2B" : quality.fatigue_rating > 30 ? "#F5A623" : "#58CC02"
-                  }}
-                >
-                  {quality.fatigue_rating.toFixed(1)} / 100
-                </span>
-              </div>
-            )}
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-[#777777]">Risk Level</span>
+            <span
+              className="text-xs font-bold"
+              style={{
+                color: quality.concussion_rating > 70 ? "#EA2B2B" : quality.concussion_rating > 40 ? "#F5A623" : "#58CC02"
+              }}
+            >
+              {quality.concussion_rating.toFixed(1)} / 100
+            </span>
           </div>
         </Card>
       )}

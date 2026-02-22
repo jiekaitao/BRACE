@@ -1360,3 +1360,168 @@ class TestJointVisibilityGuards:
         result = tracker.get_frame_quality()
         # FPPA should be computed (non-zero for valgus pose)
         assert abs(result["biomechanics"]["fppa_left"]) > 1.0
+
+
+# =====================================================
+# Concussion Rating Tests
+# =====================================================
+
+class TestConcussionRating:
+    """Tests for the head-kinematics-based concussion rating."""
+
+    @staticmethod
+    def _make_head_landmarks(nose_x=0.0, nose_y=300.0,
+                              lear_x=-50.0, lear_y=300.0,
+                              rear_x=50.0, rear_y=300.0):
+        """Create hip-centered head landmarks (3, 2): [nose, left_ear, right_ear]."""
+        return np.array([
+            [nose_x, nose_y],
+            [lear_x, lear_y],
+            [rear_x, rear_y],
+        ], dtype=np.float64)
+
+    def test_stationary_head_scores_zero(self):
+        """Fixed head position should produce concussion rating <5."""
+        tracker = MovementQualityTracker(fps=30.0)
+        joints = _make_straight_joints_2d()
+        head = self._make_head_landmarks()
+        shoulder_w = 200.0  # ~200px between shoulders
+
+        for _ in range(60):
+            tracker.process_frame(
+                joints, None, None, None, 0.0,
+                head_landmarks=head, shoulder_width_px=shoulder_w,
+            )
+        result = tracker.get_frame_quality()
+        assert result["concussion_rating"] < 5.0, (
+            f"Stationary head should score <5, got {result['concussion_rating']}"
+        )
+
+    def test_gentle_motion_scores_low(self):
+        """Sinusoidal gentle sway should produce rating <15."""
+        tracker = MovementQualityTracker(fps=30.0)
+        joints = _make_straight_joints_2d()
+        shoulder_w = 200.0
+
+        for t in range(90):
+            # Gentle sway: ±5px at 1Hz
+            offset = 5.0 * np.sin(2 * np.pi * t / 30.0)
+            head = self._make_head_landmarks(nose_x=offset, lear_x=-50 + offset, rear_x=50 + offset)
+            tracker.process_frame(
+                joints, None, None, None, 0.0,
+                head_landmarks=head, shoulder_width_px=shoulder_w,
+            )
+        result = tracker.get_frame_quality()
+        assert result["concussion_rating"] < 15.0, (
+            f"Gentle sway should score <15, got {result['concussion_rating']}"
+        )
+
+    def test_sudden_impact_spikes_high(self):
+        """A 150px jump in 1 frame should produce rating >40."""
+        tracker = MovementQualityTracker(fps=30.0)
+        joints = _make_straight_joints_2d()
+        shoulder_w = 200.0
+        head_normal = self._make_head_landmarks()
+
+        # 30 frames of still head to establish baseline
+        for _ in range(30):
+            tracker.process_frame(
+                joints, None, None, None, 0.0,
+                head_landmarks=head_normal, shoulder_width_px=shoulder_w,
+            )
+
+        # Sudden 150px jump (simulating impact — ~28g at this scale)
+        head_impact = self._make_head_landmarks(nose_x=150.0, lear_x=100.0, rear_x=200.0)
+        tracker.process_frame(
+            joints, None, None, None, 0.0,
+            head_landmarks=head_impact, shoulder_width_px=shoulder_w,
+        )
+        result = tracker.get_frame_quality()
+        assert result["concussion_rating"] > 40.0, (
+            f"Sudden impact should score >40, got {result['concussion_rating']}"
+        )
+
+    def test_no_head_landmarks_stays_zero(self):
+        """When head_landmarks=None throughout, rating stays 0."""
+        tracker = MovementQualityTracker(fps=30.0)
+        joints = _make_straight_joints_2d()
+
+        for _ in range(60):
+            tracker.process_frame(
+                joints, None, None, None, 0.0,
+                head_landmarks=None, shoulder_width_px=0.0,
+            )
+        result = tracker.get_frame_quality()
+        assert result["concussion_rating"] == 0.0, (
+            f"No head data should score 0, got {result['concussion_rating']}"
+        )
+
+    def test_peak_hold_and_decay(self):
+        """After a spike, rating should hold for ~1.5s then decay."""
+        tracker = MovementQualityTracker(fps=30.0)
+        joints = _make_straight_joints_2d()
+        shoulder_w = 200.0
+        head_normal = self._make_head_landmarks()
+
+        # Establish baseline
+        for _ in range(30):
+            tracker.process_frame(
+                joints, None, None, None, 0.0,
+                head_landmarks=head_normal, shoulder_width_px=shoulder_w,
+            )
+
+        # Sudden impact (150px jump)
+        head_impact = self._make_head_landmarks(nose_x=150.0, lear_x=100.0, rear_x=200.0)
+        tracker.process_frame(
+            joints, None, None, None, 0.0,
+            head_landmarks=head_impact, shoulder_width_px=shoulder_w,
+        )
+        spike_rating = tracker.get_frame_quality()["concussion_rating"]
+
+        # 20 frames later (still in hold window): should be near spike
+        for _ in range(20):
+            tracker.process_frame(
+                joints, None, None, None, 0.0,
+                head_landmarks=head_normal, shoulder_width_px=shoulder_w,
+            )
+        held_rating = tracker.get_frame_quality()["concussion_rating"]
+        assert held_rating >= spike_rating * 0.5, (
+            f"During hold, rating should stay near spike ({spike_rating}), got {held_rating}"
+        )
+
+        # 100 more frames (well past hold): should have decayed significantly
+        for _ in range(100):
+            tracker.process_frame(
+                joints, None, None, None, 0.0,
+                head_landmarks=head_normal, shoulder_width_px=shoulder_w,
+            )
+        decayed_rating = tracker.get_frame_quality()["concussion_rating"]
+        assert decayed_rating < spike_rating * 0.3, (
+            f"After decay, rating should be <30% of spike ({spike_rating}), got {decayed_rating}"
+        )
+
+    def test_rotational_impact_spikes(self):
+        """Swapping ear positions (head rotation) should spike angular component >20."""
+        tracker = MovementQualityTracker(fps=30.0)
+        joints = _make_straight_joints_2d()
+        shoulder_w = 200.0
+
+        # Normal orientation: left_ear at -50, right_ear at +50
+        head_normal = self._make_head_landmarks()
+        for _ in range(30):
+            tracker.process_frame(
+                joints, None, None, None, 0.0,
+                head_landmarks=head_normal, shoulder_width_px=shoulder_w,
+            )
+
+        # Swap ears (180° rotation in 1 frame ≈ massive angular velocity)
+        head_rotated = self._make_head_landmarks(lear_x=50.0, rear_x=-50.0)
+        tracker.process_frame(
+            joints, None, None, None, 0.0,
+            head_landmarks=head_rotated, shoulder_width_px=shoulder_w,
+        )
+        result = tracker.get_frame_quality()
+        # The angular component alone should contribute >20 points
+        assert result["concussion_rating"] > 20.0, (
+            f"Rotational impact should score >20, got {result['concussion_rating']}"
+        )

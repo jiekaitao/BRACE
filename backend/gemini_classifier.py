@@ -250,7 +250,7 @@ class GeminiActivityClassifier:
 
             # Specifically request JSON output for the bounding box
             response = self._model.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 contents=[img, prompt],
                 config={"response_mime_type": "application/json"}
             )

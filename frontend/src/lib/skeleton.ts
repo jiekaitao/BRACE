@@ -13,16 +13,11 @@ export const MP_BONES: [number, number][] = [
   [27, 29], [28, 30],                                // heels
 ];
 
-/** 19 feature joint indices used for SRP analysis and Frontend rendering. */
-export const FEATURE_INDICES = [0, 1, 2, 3, 4, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28, 31, 32];
+/** 14 feature joint indices used for SRP analysis (matches backend FEATURE_INDICES). */
+export const FEATURE_INDICES = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28, 31, 32];
 
-/** Feature joint names. */
+/** Feature joint names (keyed by MediaPipe index). */
 export const FEATURE_NAMES: Record<number, string> = {
-  0: "Nose",
-  1: "L Eye",
-  2: "R Eye",
-  3: "L Ear",
-  4: "R Ear",
   11: "L Shoulder",
   12: "R Shoulder",
   13: "L Elbow",
@@ -74,7 +69,8 @@ FEATURE_INDICES.forEach((mpIdx, i) => {
 
 /**
  * Bone connections for the SRP skeleton graph, using positions in the
- * 14-joint srp_joints array (0-13) instead of MediaPipe indices.
+ * 14-joint srp_joints array (0=L Shoulder, 1=R Shoulder, ..., 13=R Foot).
+ * Auto-generated from MP_BONES filtered to FEATURE_INDICES.
  */
 export const FEATURE_BONES: [number, number][] = [];
 
