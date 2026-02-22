@@ -159,11 +159,12 @@ Demo mode uses `DelayedVideoCanvas` to buffer video frames and display them dela
 ```
 Home (/) → Personal or Team path selection
   ↓
-Onboarding (/onboarding) — 4 steps (personal) or 2 steps (team):
+Onboarding (/onboarding) — 5 steps (personal) or 2 steps (team):
   1. Login/Register (username + UUID session token)
   2. Chat with InjuryChatAgent (Gemini 2.5 Pro, multi-turn) → extracts InjuryProfile
   3. Review injury profile (severity, timeframe per injury)
-  4. Mode selection (webcam / upload / demo)
+  4. Research guidelines (Gemini 2.5 Flash generates per-injury monitoring advice)
+  5. Mode selection (webcam / upload / demo)
   ↓
 Dashboard (/dashboard) — personalized entry point for returning users
   ↓
@@ -255,6 +256,10 @@ WS /ws/games/{game_id} → real-time progress to frontend dashboard
 - `frontend/src/components/PlayerRiskBadge.tsx` — GREEN/YELLOW/RED risk status badge for game analysis
 - `frontend/src/components/EmbeddingGraph.tsx` — 3D UMAP scatter plot (Three.js), supports jersey/team color mode, hover popover
 - `frontend/src/components/JerseyDebugPanel.tsx` — Debug panel showing jersey detection results, Gemini response, team clustering assignment
+- `frontend/src/components/InjuryExtractionSidebar.tsx` — Shows Gemini-extracted injuries next to chat during onboarding
+- `frontend/src/components/InjuryContextPanel.tsx` — Compact injury summary on analyze page sidebar
+- `frontend/src/components/ResearchStep.tsx` — Gemini 2.5 Flash research guidelines generation during onboarding
+- `frontend/src/components/GeminiResearchPanel.tsx` — Dashboard panel showing saved research guidelines
 - `frontend/src/components/dashboard/` — BiomechanicsChart, GuidelinesPanel, TrendCharts, WorkoutListItem
 
 **Lib:**
@@ -284,6 +289,9 @@ WS /ws/games/{game_id} → real-time progress to frontend dashboard
 - **Risk personalization**: `RiskModifiers` scales thresholds per-metric (`fppa_scale`, `hip_drop_scale`, etc.) + `monitor_joints` list. Applied in `MovementQualityTracker` at runtime. Persisted in MongoDB via auth profile endpoints.
 - **UMAP embedding**: Background async refit produces `"full"` update (all points + cluster IDs). Between refits, `run_umap_transform()` uses nearest-neighbor lookup in feature space (NOT UMAP `transform()` which is too noisy for single points) and sends `"current_only"` with just the index. Frontend handles three message types: `"full"` (replace all), `"append"` (add points — blocked during replay), `"current_only"` (snap current position to nearest existing point).
 - **Player risk engine**: `PlayerRiskEngine` tracks per-player injury events, workload (active/rest/high-intensity seconds), and determines GREEN/YELLOW/RED status. RED triggers pull recommendation. Activity-specific fatigue thresholds (basketball LANDING has lower threshold than DRIBBLING).
+- **WebRTC with WebSocket fallback**: Webcam mode tries WebRTC first (POST `/rtc/offer`), which requires `aiortc` in the backend. If unavailable (404), it falls back to WebSocket with canvas capture. The `webrtcFallbackRef` flag tells `sendFrame()` to use canvas capture instead of expecting WebRTC video tracks.
+- **Caddy frontend routing**: The Caddyfile uses `host.docker.internal:3000` for the frontend, NOT the Docker service name `frontend:3000`. This is because a local Next.js dev server often runs on the host machine. Do NOT change this to `frontend:3000` — Docker DNS resolution fails if the frontend container isn't running.
+- **Risk label naming**: Backend uses `"knee_valgus"` (not `"acl_valgus"`) for all FPPA-related risks. Frontend label maps include backward-compat entries for `"acl_valgus"` → `"Knee Valgus"` in case old data is encountered.
 
 
 ## Environment Variables

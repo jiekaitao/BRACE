@@ -267,6 +267,7 @@ def get_active_streams():
             "fps": info.get("fps", 0),
             "last_thumbnail": info.get("last_thumbnail"),
             "resolution": info.get("resolution"),
+            "vr_selected_subject": info.get("vr_selected_subject"),
         })
     return {"count": len(streams), "streams": streams}
 
@@ -357,7 +358,11 @@ def get_stream_data(stream_id: str):
         if quality:
             entry["quality"] = quality
         summary[sid_str] = entry
-    return {**response, "subjects": summary}
+    return {
+        **response,
+        "subjects": summary,
+        "vr_selected_subject": info.get("vr_selected_subject"),
+    }
 
 
 @app.get("/api/gpu-stats")
@@ -1004,16 +1009,43 @@ def decode_frame_bytes(data: bytes) -> np.ndarray:
     return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
 
-def decode_frame_with_timestamp(data: bytes) -> tuple[np.ndarray, float]:
-    """Extract video_time (8-byte float64 prefix) + JPEG from binary message."""
-    if len(data) > 8:
-        video_time = struct.unpack("<d", data[:8])[0]
+def decode_frame_with_timestamp(data: bytes) -> tuple[np.ndarray, float, int | None]:
+    """Extract video_time (8-byte float64 prefix) + optional VR selection + JPEG.
+
+    Binary format v1 (web):  [8B timestamp][JPEG ...]
+    Binary format v2 (VR):   [8B timestamp][4B int32 selected_sid][JPEG ...]
+
+    Detection: bytes[8:10] == 0xFF 0xD8 means JPEG starts at offset 8 (v1).
+    Otherwise, read 4-byte LE int32 at offset 8, JPEG starts at offset 12 (v2).
+    VR selection values: -1 = deselect, -2 = no change, >=0 = subject ID.
+
+    Returns (rgb, video_time, vr_select) where vr_select is None if v1 / no-change.
+    """
+    if len(data) <= 8:
+        return decode_frame_bytes(data), 0.0, None
+
+    video_time = struct.unpack("<d", data[:8])[0]
+    vr_select: int | None = None
+
+    # Check if JPEG starts immediately after timestamp (v1) or after 4-byte selection (v2)
+    if len(data) > 10 and data[8:10] == b"\xff\xd8":
+        # v1: JPEG SOI marker right after timestamp
         jpeg_bytes = data[8:]
+    elif len(data) > 14 and data[12:14] == b"\xff\xd8":
+        # v2: 4-byte selection + JPEG
+        raw_sel = struct.unpack("<i", data[8:12])[0]
+        if raw_sel == -1:
+            vr_select = -1  # deselect
+        elif raw_sel >= 0:
+            vr_select = raw_sel  # select this subject
+        # raw_sel == -2 means "no change" → leave vr_select as None
+        jpeg_bytes = data[12:]
     else:
-        video_time = 0.0
-        jpeg_bytes = data
+        # Fallback: treat everything after timestamp as JPEG
+        jpeg_bytes = data[8:]
+
     rgb = decode_frame_bytes(jpeg_bytes)
-    return rgb, video_time
+    return rgb, video_time, vr_select
 
 
 @app.websocket("/ws/analyze")
@@ -1272,10 +1304,24 @@ async def _handle_webcam_mode(
             if msg.get("type") == "websocket.disconnect":
                 break
 
-            # Handle text messages (reset, config)
+            # Handle text/JSON control messages (reset, config, select_subject).
+            # Check both text frames AND binary frames — some WebSocket libs
+            # (e.g. NativeWebSocket on Android/Quest) may send text as binary.
+            _control_text = None
             if "text" in msg and msg["text"]:
+                _control_text = msg["text"]
+            elif "bytes" in msg and msg["bytes"]:
+                _raw = msg["bytes"]
+                # Short binary messages starting with '{' are likely JSON control
+                if len(_raw) < 512 and _raw[:1] == b"{":
+                    try:
+                        _control_text = _raw.decode("utf-8").rstrip("\x00")
+                    except UnicodeDecodeError:
+                        pass
+
+            if _control_text:
                 try:
-                    data = json.loads(msg["text"])
+                    data = json.loads(_control_text)
                     if data.get("type") == "reset":
                         # Video loop detected — freeze analyzers, keep pipeline warm
                         manager.note_loop()
@@ -1290,6 +1336,7 @@ async def _handle_webcam_mode(
                         continue
                     if data.get("type") == "select_subject":
                         vr_selected_subject = data.get("subject_id")  # int or None
+                        print(f"[vr] select_subject -> {vr_selected_subject}", flush=True)
                         continue
                 except (json.JSONDecodeError, KeyError):
                     pass
@@ -1299,7 +1346,15 @@ async def _handle_webcam_mode(
             t_decode_start = time.monotonic()
             try:
                 if "bytes" in msg and msg["bytes"]:
-                    rgb, video_time = decode_frame_with_timestamp(msg["bytes"])
+                    rgb, video_time, _vr_sel = decode_frame_with_timestamp(msg["bytes"])
+                    # VR binary-embedded subject selection (v2 frame format)
+                    if _vr_sel is not None:
+                        if _vr_sel == -1:
+                            vr_selected_subject = None
+                            print("[vr] deselect (binary)", flush=True)
+                        else:
+                            vr_selected_subject = _vr_sel
+                            print(f"[vr] select_subject -> {vr_selected_subject} (binary)", flush=True)
                 elif "text" in msg and msg["text"]:
                     rgb = decode_frame(msg["text"])
                 else:
@@ -1755,6 +1810,7 @@ async def _handle_webcam_mode(
                 info = _active_streams[stream_id]
                 info["frame_count"] = frame_idx
                 info["subject_count"] = len(active_ids)
+                info["vr_selected_subject"] = vr_selected_subject
                 if info["resolution"] is None:
                     info["resolution"] = [w, h]
                 # Store latest frame for high-res snapshot endpoint

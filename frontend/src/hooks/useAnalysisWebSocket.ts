@@ -729,15 +729,19 @@ export function useAnalysisWebSocket(
                 cluster_threshold: 2.0
               })
             }))
-            .then((res) => res.json())
+            .then((res) => {
+              if (!res.ok) throw new Error(`WebRTC offer HTTP ${res.status}`);
+              return res.json();
+            })
             .then((answer) => {
               if (!stopped && pc) pc.setRemoteDescription(answer);
             })
             .catch((err) => {
-              console.error("WebRTC offer failed, falling back to WebSocket:", err);
+              console.error("WebRTC unavailable, falling back to WebSocket:", err);
               webrtcFallbackRef.current = true;
+              // Detach onclose before closing to prevent duplicate retry
+              if (dc) { dc.onclose = null; dc.close(); dc = null; }
               if (pc) { pc.close(); pc = null; }
-              if (dc) { dc.close(); dc = null; }
               if (!stopped) openWs(getWsUrl(), true);
             });
         }

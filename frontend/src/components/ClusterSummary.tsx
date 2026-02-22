@@ -189,7 +189,9 @@ export default function ClusterSummary({
                 style={{ backgroundColor: color }}
               />
               <span className="text-sm font-bold text-[#4B4B4B]">
-                {info.activity_label || `Motion #${Number(id) + 1}`}
+                {info.activity_label
+                  ? info.activity_label.replace(/\b\w/g, (c) => c.toUpperCase())
+                  : `Motion #${Number(id) + 1}`}
               </span>
             </div>
             <div className="flex items-center gap-3">

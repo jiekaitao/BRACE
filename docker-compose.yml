@@ -12,7 +12,7 @@ x-backend-common: &backend-common
     - vectorai
   volumes:
     - uploads:/app/uploads
-    - ./data/sports_videos:/app/data/sports_videos:ro
+    - ./backend/data/sports_videos:/app/data/sports_videos:ro
     - ./backend/main.py:/app/main.py:ro
     - ./backend/streaming_analyzer.py:/app/streaming_analyzer.py:ro
     - ./backend/subject_manager.py:/app/subject_manager.py:ro

@@ -17,21 +17,20 @@ GEMINI_API_KEY = os.environ.get("GOOGLE_GEMINI_API_KEY", "")
 _MIN_CALL_INTERVAL = 2.0
 
 _CLASSIFY_PROMPT = (
-    "What physical activity is this person performing? "
-    "Respond with ONLY a single word or short phrase. "
-    "Prefer these specific labels when applicable: "
+    "What physical activity or movement is this person performing? "
+    "Respond with ONLY a single word or short phrase (1-3 words max). "
+    "Never say 'I cannot' or 'sorry'. Always give your best guess. "
+    "Preferred labels: "
     "squat, front squat, back squat, goblet squat, "
     "lunge, forward lunge, reverse lunge, walking lunge, "
-    "running, jogging, sprinting, "
-    "walking, "
+    "running, jogging, sprinting, walking, standing, "
     "jump, box jump, jumping, "
     "deadlift, romanian deadlift, "
-    "push-up, "
-    "plank, side plank. "
-    "Other valid labels: "
+    "push-up, plank, side plank, "
     "stretching, curl, bench-press, rowing, cycling, swimming, dancing, "
     "boxing, serving, swinging, throwing, catching, climbing, skating, skiing, "
-    "dribbling, shooting, dunking, kicking, punching, sit-up."
+    "dribbling, shooting, dunking, kicking, punching, sit-up, "
+    "sitting, typing, gesturing, talking, waving."
 )
 
 
@@ -181,7 +180,7 @@ class GeminiActivityClassifier:
             contents.append(prompt or _CLASSIFY_PROMPT)
 
             response = self._model.models.generate_content(
-                model="gemini-2.5-pro",
+                model="gemini-2.5-flash",
                 contents=contents,
             )
             with self._lock:
@@ -194,6 +193,10 @@ class GeminiActivityClassifier:
             if len(words) > 3:
                 label = " ".join(words[:3])
             if not label:
+                label = "unknown"
+            # Filter out refusal/non-answer responses
+            _REFUSAL_PHRASES = ("cannot", "sorry", "unable", "not possible", "i'm not", "i am not", "determine", "unclear")
+            if any(phrase in label for phrase in _REFUSAL_PHRASES):
                 label = "unknown"
             print(f"[gemini] classified activity: {label}", flush=True)
 

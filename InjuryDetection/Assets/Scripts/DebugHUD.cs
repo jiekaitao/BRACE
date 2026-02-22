@@ -176,6 +176,28 @@ public class DebugHUD : MonoBehaviour
             sb.AppendLine($"Boxes: {boxRenderer.BoxCount}  FOV: {boxRenderer.FovSource}");
         }
 
+        // Selection state
+        if (braceWs != null)
+        {
+            int sel = braceWs.PendingSelect;
+            string selStr = sel == -2 ? "none" : sel == -1 ? "deselect" : $"S{sel}";
+            sb.AppendLine($"Select: {selStr}");
+
+            // Check if any subject in the response has selected=true
+            if (braceWs.LatestResponse?.subjects != null)
+            {
+                bool anySelected = false;
+                foreach (var kvp in braceWs.LatestResponse.subjects)
+                {
+                    if (kvp.Value.selected) { anySelected = true; break; }
+                }
+                string ack = anySelected
+                    ? "<color=#00ff00>ACK</color>"
+                    : "<color=#ffcc00>NOT ACK</color>";
+                sb.AppendLine($"Server select: {ack}");
+            }
+        }
+
         // Latest response info
         if (braceWs != null && braceWs.LatestResponse != null)
         {

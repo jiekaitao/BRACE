@@ -46,5 +46,10 @@ During testing, synthetic solid-color crops produced delta-function histograms (
 
 ## Concussion Risk Detection
 
+## Gemini Activity Classification
+
+### Challenge: Activity Classification Never Triggered in Live Sessions
+The `_classify_cluster_webcam()` function existed in `main.py` but was never called — it was an orphaned helper with no trigger in the WebSocket frame loop. Even after wiring it up, the `min_segments=3` threshold in `get_clusters_needing_classification()` was too strict for real-time webcam sessions: continuous motion typically produces 1 long segment per cluster, never reaching the 3-segment threshold. We lowered the threshold to 1 segment and added the classification trigger after each re-analysis pass. Additionally, using `gemini-2.5-pro` for a simple image classification task caused frequent refusals ("cannot be determined", "I am sorry") — switching to `gemini-2.5-flash` with a stronger prompt ("Never say 'I cannot' or 'sorry'. Always give your best guess.") resolved the refusal issue and reduced classification latency.
+
 ### Challenge: Concussion Rating Always 100/100
 The concussion rating always showed 100/100 during any motion because: (1) Head keypoints (nose, ears) were dropped in the COCO→MediaPipe mapping, so the head position was never actually tracked. (2) The `raw_joints` array is always shape (14,2) — the feature joint subset — so the `len(raw_joints)==33` check always failed. (3) The fallback used `_jerk_ema * 500.0` (whole-body SRP jerk) which instantly saturated to 100. We fixed this by adding nose/ear mappings to `_COCO_TO_MP`, extracting and smoothing head landmarks separately in the streaming analyzer, and replacing the broken jerk-based score with proper head-specific kinematics: linear acceleration (g) from nose displacement, angular velocity (rad/s) from ear-to-ear angle changes, and an adaptive baseline z-score for spike detection. A peak-hold + exponential decay mechanism prevents flickering. Normal basketball now scores 0-15; only actual head impacts spike above 50.

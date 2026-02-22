@@ -828,7 +828,7 @@ class StreamingAnalyzer:
 
         return result
 
-    def get_clusters_needing_classification(self, min_segments: int = 3) -> list[int]:
+    def get_clusters_needing_classification(self, min_segments: int = 1) -> list[int]:
         """Return cluster IDs that have enough segments but no activity label yet."""
         result = []
         with self._lock:

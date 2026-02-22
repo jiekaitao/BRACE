@@ -6,8 +6,12 @@ using UnityEngine;
 
 /// <summary>
 /// Manages WebSocket connection to the BRACE server.
-/// Sends binary frames (8-byte LE timestamp + JPEG) and receives JSON analysis responses.
+/// Sends binary frames (8-byte LE timestamp + 4-byte LE selection + JPEG) and receives JSON analysis responses.
 /// Auto-reconnects on disconnect.
+///
+/// Binary frame format v2:
+///   [8-byte LE double: video_time][4-byte LE int32: selected_subject_id][JPEG bytes]
+///   Selection values: -2 = no change, -1 = deselect, >= 0 = subject ID.
 /// </summary>
 public class BraceWebSocket : MonoBehaviour
 {
@@ -29,6 +33,11 @@ public class BraceWebSocket : MonoBehaviour
     private float _reconnectTimer;
     private bool _shouldReconnect;
 
+    // Subject selection embedded in binary frames (-2 = no change)
+    private int _pendingSelect = NO_CHANGE;
+    private const int NO_CHANGE = -2;
+    private const int DESELECT = -1;
+
     /// <summary>Latest parsed response from the server.</summary>
     public BraceResponse LatestResponse { get; private set; }
 
@@ -46,6 +55,9 @@ public class BraceWebSocket : MonoBehaviour
 
     /// <summary>Last error message (for debug HUD).</summary>
     public string LastError { get; private set; } = "";
+
+    /// <summary>Current pending selection value (for debug HUD). -2=none, -1=deselect, >=0=subject.</summary>
+    public int PendingSelect => _pendingSelect;
 
     private float SendInterval => 1f / maxFps;
 
@@ -150,6 +162,10 @@ public class BraceWebSocket : MonoBehaviour
             && _inFlight < maxInFlight;
     }
 
+    /// <summary>
+    /// Send a camera frame with embedded subject selection.
+    /// Binary format v2: [8B timestamp][4B int32 selection][JPEG]
+    /// </summary>
     public async void SendFrame(byte[] jpeg)
     {
         if (!_connected || jpeg == null || jpeg.Length == 0) return;
@@ -159,9 +175,22 @@ public class BraceWebSocket : MonoBehaviour
         if (!BitConverter.IsLittleEndian)
             Array.Reverse(timeBytes);
 
-        byte[] message = new byte[8 + jpeg.Length];
+        // Consume the pending selection (send once, then revert to NO_CHANGE)
+        int sel = _pendingSelect;
+        byte[] selBytes = BitConverter.GetBytes(sel);
+        if (!BitConverter.IsLittleEndian)
+            Array.Reverse(selBytes);
+
+        // After sending the selection once, revert to no-change so we don't
+        // keep re-sending it every frame
+        if (sel != NO_CHANGE)
+            _pendingSelect = NO_CHANGE;
+
+        // v2 format: [8B time][4B selection][JPEG]
+        byte[] message = new byte[12 + jpeg.Length];
         Buffer.BlockCopy(timeBytes, 0, message, 0, 8);
-        Buffer.BlockCopy(jpeg, 0, message, 8, jpeg.Length);
+        Buffer.BlockCopy(selBytes, 0, message, 8, 4);
+        Buffer.BlockCopy(jpeg, 0, message, 12, jpeg.Length);
 
         _inFlight++;
         _lastSendTime = Time.time;
@@ -181,22 +210,14 @@ public class BraceWebSocket : MonoBehaviour
     // Subject selection
     // ------------------------------------------------------------------
 
-    public async void SelectSubject(int? subjectId)
+    /// <summary>
+    /// Select a subject. The selection is embedded in the next binary frame
+    /// (bypasses SendText which doesn't work reliably on Quest 3 Android).
+    /// </summary>
+    public void SelectSubject(int? subjectId)
     {
-        if (!_connected) return;
-
-        string msg = subjectId.HasValue
-            ? $"{{\"type\":\"select_subject\",\"subject_id\":{subjectId.Value}}}"
-            : "{\"type\":\"select_subject\",\"subject_id\":null}";
-
-        try
-        {
-            await _ws.SendText(msg);
-        }
-        catch (Exception e)
-        {
-            Debug.LogWarning($"[BRACE] SelectSubject failed: {e.Message}");
-        }
+        _pendingSelect = subjectId.HasValue ? subjectId.Value : DESELECT;
+        Debug.Log($"[BRACE] SelectSubject queued: {_pendingSelect}");
     }
 
     // ------------------------------------------------------------------
