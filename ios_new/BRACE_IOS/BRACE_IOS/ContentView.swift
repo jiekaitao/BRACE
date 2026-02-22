@@ -7,6 +7,8 @@ struct ContentView: View {
     @AppStorage("serverURL") private var serverURL = "wss://ws.braceml.com/ws/analyze?mode=webcam&fps=240&client=ios"
     @State private var showSettings = false
     @State private var selectedJointIndex = 25 // L Knee default
+    @State private var zoomScale: CGFloat = 1.0
+    @State private var lastZoomScale: CGFloat = 1.0
 
     var body: some View {
         ZStack {
@@ -14,14 +16,47 @@ struct ContentView: View {
 
             VStack(spacing: 0) {
                 // Camera preview + skeleton overlay (~65%)
-                ZStack {
-                    CameraPreview(session: camera.session)
-                        .ignoresSafeArea(edges: .top)
+                GeometryReader { geo in
+                    ZStack {
+                        CameraPreview(session: camera.session)
+                            .ignoresSafeArea(edges: .top)
 
-                    SkeletonOverlayView(landmarks: ws.landmarks)
-
-                    // Status overlay
-                    VStack {
+                        SkeletonOverlayView(
+                            subjects: ws.lastFrame?.subjects ?? [:],
+                            selectedSubjectId: ws.selectedSubjectId,
+                            cameraWidth: camera.frameWidth,
+                            cameraHeight: camera.frameHeight
+                        )
+                    }
+                    .scaleEffect(zoomScale)
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { value in
+                                zoomScale = max(1.0, min(lastZoomScale * value, 5.0))
+                            }
+                            .onEnded { value in
+                                lastZoomScale = zoomScale
+                                if zoomScale < 1.05 { zoomScale = 1.0; lastZoomScale = 1.0 }
+                            }
+                    )
+                    .simultaneousGesture(
+                        TapGesture(count: 2).onEnded {
+                            // Double-tap to reset zoom & deselect
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                zoomScale = 1.0
+                                lastZoomScale = 1.0
+                            }
+                            ws.selectSubject(nil)
+                        }
+                    )
+                    .simultaneousGesture(
+                        SpatialTapGesture().onEnded { value in
+                            handleTapToSelect(at: value.location, in: geo.size)
+                        }
+                    )
+                    .clipped()
+                    .overlay(alignment: .top) {
+                        // Status overlay
                         HStack {
                             connectionBadge
                             Spacer()
@@ -29,19 +64,16 @@ struct ContentView: View {
                         }
                         .padding(.horizontal, 12)
                         .padding(.top, 8)
-
-                        Spacer()
-
+                    }
+                    .overlay(alignment: .bottom) {
                         // Subject info bar
-                        if let frame = ws.lastFrame,
-                           let firstSubject = frame.subjects.values.first {
-                            subjectInfoBar(firstSubject)
+                        if let subject = selectedOrFirstSubject {
+                            subjectInfoBar(subject)
                         }
                     }
                 }
                 .frame(maxWidth: .infinity)
                 .layoutPriority(1)
-                .clipped()
 
                 // Divider
                 Rectangle()
@@ -84,6 +116,75 @@ struct ContentView: View {
         .onAppear {
             requestCameraPermission()
         }
+    }
+
+    // MARK: - Tap-to-Select
+
+    private func handleTapToSelect(at point: CGPoint, in size: CGSize) {
+        guard let frame = ws.lastFrame else { return }
+
+        // Map tap from view space back to normalised [0,1] camera space,
+        // accounting for resizeAspectFill crop.
+        let cw = camera.frameWidth
+        let ch = camera.frameHeight
+        let vw = size.width
+        let vh = size.height
+        let camAspect = cw / max(ch, 1)
+        let viewAspect = vw / max(vh, 1)
+
+        let fillScale: CGFloat
+        let offsetX: CGFloat
+        let offsetY: CGFloat
+        if camAspect < viewAspect {
+            fillScale = vw / cw
+            offsetX = 0
+            offsetY = (ch * fillScale - vh) / 2.0
+        } else {
+            fillScale = vh / ch
+            offsetX = (cw * fillScale - vw) / 2.0
+            offsetY = 0
+        }
+
+        let nx = Double((point.x + offsetX) / (cw * fillScale))
+        let ny = Double((point.y + offsetY) / (ch * fillScale))
+
+        var bestId: String?
+        var bestDist: Double = .infinity
+
+        for (subjectId, subject) in frame.subjects {
+            guard let bbox = subject.bbox else { continue }
+
+            // Check if tap is inside bounding box
+            if nx >= bbox.x1 && nx <= bbox.x2 && ny >= bbox.y1 && ny <= bbox.y2 {
+                // Pick the closest to bbox centre
+                let cx = (bbox.x1 + bbox.x2) / 2.0
+                let cy = (bbox.y1 + bbox.y2) / 2.0
+                let dist = (nx - cx) * (nx - cx) + (ny - cy) * (ny - cy)
+                if dist < bestDist {
+                    bestDist = dist
+                    bestId = subjectId
+                }
+            }
+        }
+
+        if let bestId {
+            // Toggle: tap same subject again to deselect
+            if ws.selectedSubjectId == bestId {
+                ws.selectSubject(nil)
+            } else {
+                ws.selectSubject(bestId)
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private var selectedOrFirstSubject: SubjectData? {
+        guard let frame = ws.lastFrame else { return nil }
+        if let sid = ws.selectedSubjectId, let s = frame.subjects[sid] {
+            return s
+        }
+        return frame.subjects.values.first
     }
 
     // MARK: - Subviews
@@ -141,6 +242,13 @@ struct ContentView: View {
                 .foregroundStyle(.white.opacity(0.7))
 
             Spacer()
+
+            // Subject count indicator
+            if let frame = ws.lastFrame, frame.subjects.count > 1 {
+                Text("\(frame.subjects.count) ppl")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -171,11 +279,9 @@ struct ContentView: View {
         ws.serverURL = serverURL
         ws.connect()
 
-        // Wire camera frames to WebSocket
-        camera.onFrame = { jpegData, timestamp in
-            DispatchQueue.main.async {
-                ws.sendFrame(jpegData: jpegData, timestamp: timestamp)
-            }
+        // Wire camera frames to WebSocket (called on capture queue, sendFrame is thread-safe)
+        camera.onFrame = { [weak ws] jpegData, timestamp in
+            ws?.sendFrame(jpegData: jpegData, timestamp: timestamp)
         }
     }
 }

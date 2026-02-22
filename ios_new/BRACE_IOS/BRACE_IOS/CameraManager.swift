@@ -13,6 +13,9 @@ final class CameraManager: NSObject, ObservableObject {
     @Published var isRunning = false
     @Published var captureFPS: Double = 0
     @Published var actualFormat: String = ""
+    /// Camera frame dimensions after portrait rotation (width < height).
+    @Published var frameWidth: CGFloat = 9
+    @Published var frameHeight: CGFloat = 16
 
     // MARK: - Frame Callback
     /// Called on the capture queue with (jpegData, captureTimestamp).
@@ -131,11 +134,11 @@ final class CameraManager: NSObject, ObservableObject {
             device.activeVideoMinFrameDuration = CMTime(value: 1, timescale: timescale)
             device.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: timescale)
 
-            if device.isFocusModeSupported(.locked) {
-                device.focusMode = .locked
+            if device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusMode = .continuousAutoFocus
             }
-            if device.isExposureModeSupported(.locked) {
-                device.exposureMode = .locked
+            if device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposureMode = .continuousAutoExposure
             }
 
             device.unlockForConfiguration()
@@ -162,6 +165,15 @@ final class CameraManager: NSObject, ObservableObject {
             session.addOutput(output)
         }
         videoOutput = output
+
+        // Match pixel buffer orientation to the preview layer (portrait).
+        // Without this, the sensor delivers landscape buffers while the
+        // preview auto-rotates, causing the skeleton to appear sideways.
+        if let connection = output.connection(with: .video) {
+            if connection.isVideoOrientationSupported {
+                connection.videoOrientation = .portrait
+            }
+        }
     }
 
     // MARK: - Start / Stop
@@ -213,9 +225,18 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         // Downscale to 480p height, preserve aspect ratio
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let srcWidth = ciImage.extent.width
         let srcHeight = ciImage.extent.height
         let scale = CGFloat(targetHeight) / srcHeight
         let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+
+        // Publish frame dimensions (after portrait rotation) on first frame
+        if frameCount == 1 {
+            DispatchQueue.main.async { [weak self] in
+                self?.frameWidth = srcWidth
+                self?.frameHeight = srcHeight
+            }
+        }
 
         // Encode to JPEG
         let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
