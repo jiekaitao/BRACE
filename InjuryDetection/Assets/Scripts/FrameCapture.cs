@@ -23,7 +23,7 @@ public class FrameCapture : MonoBehaviour
 
     [Header("Black Frame Detection")]
     [Tooltip("If brightness stays below this for blackFrameThreshold frames, try next camera")]
-    [SerializeField] private int blackFrameLimit = 60;
+    [SerializeField] private int blackFrameLimit = 10;
 
     private WebCamTexture _webcam;
     private Texture2D _captureTex;
@@ -89,10 +89,36 @@ public class FrameCapture : MonoBehaviour
         RequestCameraPermissionAndStart();
     }
 
+    /// <summary>Switch to a specific camera index. Call from outside or via controller.</summary>
+    public void SwitchToCamera(int index)
+    {
+        if (index >= 0 && index < _totalCameras && index != _currentCameraIndex)
+        {
+            Debug.Log($"[BRACE] Manual switch to camera {index}");
+            _triedAllCameras = false;
+            StartCameraAtIndex(index);
+        }
+    }
+
+    /// <summary>Cycle to the next camera.</summary>
+    public void CycleNextCamera()
+    {
+        int next = (_currentCameraIndex + 1) % Mathf.Max(1, _totalCameras);
+        Debug.Log($"[BRACE] Cycling to camera {next}/{_totalCameras}");
+        _triedAllCameras = false;
+        StartCameraAtIndex(next);
+    }
+
     void Update()
     {
-        if (!_ready || braceWs == null) return;
-        if (!braceWs.ReadyToSend()) return;
+        // Manual camera switch: Right controller B button or Left controller Y button
+        if (OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.RTouch) ||
+            OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.LTouch))
+        {
+            CycleNextCamera();
+        }
+
+        if (!_ready) return;
         if (_webcam == null || !_webcam.isPlaying) return;
         if (!_webcam.didUpdateThisFrame) return;
 
@@ -103,21 +129,33 @@ public class FrameCapture : MonoBehaviour
             Debug.Log($"[BRACE] Camera info: rotation={_webcam.videoRotationAngle}° mirrored={_webcam.videoVerticallyMirrored} res={_webcam.width}x{_webcam.height}");
         }
 
-        byte[] jpeg = CaptureJpeg();
-        if (jpeg != null)
-        {
-            braceWs.SendFrame(jpeg);
-            _framesSent++;
-        }
+        // Always sample brightness (independent of WebSocket readiness)
+        SampleBrightness();
 
-        // Auto-cycle camera if getting black frames
-        if (!_triedAllCameras && _avgBrightness < 2f && _framesSent > 5)
+        // Auto-cycle if black frames persist
+        if (!_triedAllCameras && _avgBrightness < 2f)
         {
             _blackFrameCount++;
             if (_blackFrameCount >= blackFrameLimit)
             {
-                Debug.LogWarning($"[BRACE] Camera {_currentCameraIndex} producing black frames after {_blackFrameCount} frames, trying next...");
+                Debug.LogWarning($"[BRACE] Camera {_currentCameraIndex} black for {_blackFrameCount} frames, trying next...");
                 TryNextCamera();
+                return;
+            }
+        }
+        else
+        {
+            _blackFrameCount = 0; // reset if we get a good frame
+        }
+
+        // Send frame to server (throttled)
+        if (braceWs != null && braceWs.ReadyToSend())
+        {
+            byte[] jpeg = CaptureJpeg();
+            if (jpeg != null)
+            {
+                braceWs.SendFrame(jpeg);
+                _framesSent++;
             }
         }
     }
@@ -296,7 +334,32 @@ public class FrameCapture : MonoBehaviour
     }
 
     // ------------------------------------------------------------------
-    // JPEG capture with rotation/mirror correction
+    // Brightness sampling (runs every frame, independent of JPEG capture)
+    // ------------------------------------------------------------------
+
+    private void SampleBrightness()
+    {
+        if (_webcam == null || _webcam.width < 32) return;
+
+        Color32[] pixels = _webcam.GetPixels32();
+        int step = Mathf.Max(1, pixels.Length / 100);
+        float brightnessSum = 0;
+        int nonBlack = 0;
+        int sampled = 0;
+        for (int i = 0; i < pixels.Length; i += step)
+        {
+            float lum = (pixels[i].r + pixels[i].g + pixels[i].b) / 3f;
+            brightnessSum += lum;
+            if (lum > 5f) nonBlack++;
+            sampled++;
+        }
+        _avgBrightness = sampled > 0 ? brightnessSum / sampled : 0;
+        _nonBlackPixels = nonBlack;
+        _totalSampled = sampled;
+    }
+
+    // ------------------------------------------------------------------
+    // JPEG capture
     // ------------------------------------------------------------------
 
     private byte[] CaptureJpeg()
@@ -314,25 +377,8 @@ public class FrameCapture : MonoBehaviour
             _captureTex = new Texture2D(w, h, TextureFormat.RGBA32, false);
         }
 
-        Color32[] pixels = _webcam.GetPixels32();
-        _captureTex.SetPixels32(pixels);
+        _captureTex.SetPixels32(_webcam.GetPixels32());
         _captureTex.Apply();
-
-        // Sample brightness from ~100 evenly spaced pixels to detect black frames
-        int step = Mathf.Max(1, pixels.Length / 100);
-        float brightnessSum = 0;
-        int nonBlack = 0;
-        int sampled = 0;
-        for (int i = 0; i < pixels.Length; i += step)
-        {
-            float lum = (pixels[i].r + pixels[i].g + pixels[i].b) / 3f;
-            brightnessSum += lum;
-            if (lum > 5f) nonBlack++;
-            sampled++;
-        }
-        _avgBrightness = sampled > 0 ? brightnessSum / sampled : 0;
-        _nonBlackPixels = nonBlack;
-        _totalSampled = sampled;
 
         // Determine output dimensions accounting for rotation
         int angle = _webcam.videoRotationAngle;

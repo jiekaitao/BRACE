@@ -128,6 +128,19 @@ public class DebugHUD : MonoBehaviour
                     sb.AppendLine("<color=#ff3333>FRAMES ARE BLACK!</color>");
             }
 
+            // List all available cameras
+            var devices = WebCamTexture.devices;
+            if (devices.Length > 0)
+            {
+                sb.Append("Cams: ");
+                for (int i = 0; i < devices.Length; i++)
+                {
+                    string marker = (i.ToString() == frameCapture.CameraIndex.Split('/')[0]) ? ">" : " ";
+                    sb.Append($"{marker}[{i}]{devices[i].name} ");
+                }
+                sb.AppendLine();
+            }
+
             if (!frameCapture.IsCapturing && frameCapture.CameraName == "NOT FOUND")
                 sb.AppendLine("<color=#ffcc00>No camera - check permissions</color>");
             else if (!frameCapture.IsCapturing && frameCapture.CameraName == "PERM DENIED")
