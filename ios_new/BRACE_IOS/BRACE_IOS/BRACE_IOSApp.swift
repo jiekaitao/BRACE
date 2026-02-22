@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct BRACECaptureApp: App {
+struct BRACE_IOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()

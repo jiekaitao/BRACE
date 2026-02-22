@@ -1,13 +1,11 @@
 import SwiftUI
 
 /// Draws a skeleton overlay on top of the camera preview.
-/// Landmarks are in normalised [0,1] coordinates; the view maps them
-/// to its own size. The front camera is already mirrored by CameraManager.
+/// Landmarks are in normalised [0,1] coordinates; the view maps them to its own size.
 struct SkeletonOverlayView: View {
     let landmarks: [Landmark]
     let visibilityThreshold: Double = 0.3
 
-    // Colours
     private let boneColor = Color.green.opacity(0.8)
     private let jointColor = Color.white
     private let lowVisColor = Color.red.opacity(0.3)

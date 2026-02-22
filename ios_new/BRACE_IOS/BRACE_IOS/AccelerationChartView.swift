@@ -17,7 +17,6 @@ struct AccelerationChartView: View {
     let landmarks: [Landmark]
     @Binding var selectedJointIndex: Int
 
-    // History buffers
     @State private var positionHistory: [(x: Double, y: Double, t: CFAbsoluteTime)] = []
     @State private var velocityHistory: [(mag: Double, t: CFAbsoluteTime)] = []
     @State private var accelerationHistory: [Double] = []
@@ -41,7 +40,6 @@ struct AccelerationChartView: View {
                 .pickerStyle(.menu)
                 .tint(.green)
                 .onChange(of: selectedJointIndex) { _, _ in
-                    // Reset history on joint change
                     positionHistory.removeAll()
                     velocityHistory.removeAll()
                     accelerationHistory.removeAll()
@@ -65,11 +63,9 @@ struct AccelerationChartView: View {
                 let h = size.height
                 let count = accelerationHistory.count
 
-                // Auto-scale Y
                 let maxVal = max(accelerationHistory.max() ?? 1.0, 0.1)
                 let yScale = (h - 8) / maxVal
 
-                // Gradient fill
                 let points: [CGPoint] = accelerationHistory.enumerated().map { i, val in
                     let x = w * CGFloat(i) / CGFloat(max(count - 1, 1))
                     let y = h - val * yScale - 4
@@ -116,13 +112,11 @@ struct AccelerationChartView: View {
 
         let now = CFAbsoluteTimeGetCurrent()
 
-        // Append position
         positionHistory.append((x: lm.x, y: lm.y, t: now))
         if positionHistory.count > maxSamples + 5 {
             positionHistory.removeFirst()
         }
 
-        // Compute velocity from last two positions
         if positionHistory.count >= 2 {
             let curr = positionHistory[positionHistory.count - 1]
             let prev = positionHistory[positionHistory.count - 2]
@@ -138,7 +132,6 @@ struct AccelerationChartView: View {
             }
         }
 
-        // Compute acceleration from last two velocities
         if velocityHistory.count >= 2 {
             let curr = velocityHistory[velocityHistory.count - 1]
             let prev = velocityHistory[velocityHistory.count - 2]
@@ -146,7 +139,6 @@ struct AccelerationChartView: View {
             if dt > 0.001 {
                 let rawAccel = abs(curr.mag - prev.mag) / dt
 
-                // EMA smoothing
                 let smoothed: Double
                 if let last = accelerationHistory.last {
                     smoothed = emaAlpha * rawAccel + (1.0 - emaAlpha) * last

@@ -4,7 +4,7 @@ import AVFoundation
 struct ContentView: View {
     @StateObject private var camera = CameraManager()
     @StateObject private var ws = BRACEWebSocket()
-    @AppStorage("serverURL") private var serverURL = "wss://ws.braceml.com/ws/analyze?mode=webcam&fps=120&client=web"
+    @AppStorage("serverURL") private var serverURL = "wss://ws.braceml.com/ws/analyze?mode=webcam&fps=240&client=web"
     @State private var showSettings = false
     @State private var selectedJointIndex = 25 // L Knee default
 
@@ -122,7 +122,6 @@ struct ContentView: View {
 
     private func subjectInfoBar(_ subject: SubjectData) -> some View {
         HStack(spacing: 12) {
-            // Phase badge
             let phaseColor: Color = subject.phase == "anomaly" ? .red : (subject.phase == "normal" ? .green : .yellow)
             Text(subject.phase.uppercased())
                 .font(.system(.caption2, design: .monospaced, weight: .bold))
@@ -173,8 +172,10 @@ struct ContentView: View {
         ws.connect()
 
         // Wire camera frames to WebSocket
-        camera.onFrame = { [weak ws] jpegData, timestamp in
-            ws?.sendFrame(jpegData: jpegData, timestamp: timestamp)
+        camera.onFrame = { jpegData, timestamp in
+            DispatchQueue.main.async {
+                ws.sendFrame(jpegData: jpegData, timestamp: timestamp)
+            }
         }
     }
 }
@@ -188,7 +189,7 @@ struct CameraPreview: UIViewRepresentable {
         let view = PreviewView()
         view.previewLayer.session = session
         view.previewLayer.videoGravity = .resizeAspectFill
-        view.previewLayer.connection?.isVideoMirrored = true
+        // Back camera — no mirroring
         return view
     }
 

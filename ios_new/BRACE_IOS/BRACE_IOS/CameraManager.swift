@@ -1,11 +1,12 @@
 import AVFoundation
+import Combine
 import UIKit
 import os
 
 private let log = Logger(subsystem: "com.brace.capture", category: "Camera")
 
-/// Manages AVCaptureSession at up to 120fps, downscales to 480p JPEG,
-/// and provides frames to the WebSocket sender via a callback.
+/// Manages AVCaptureSession at up to 240fps (back camera) for sideline capture.
+/// Downscales to 480p JPEG and provides frames via callback.
 final class CameraManager: NSObject, ObservableObject {
 
     // MARK: - Published State
@@ -35,17 +36,17 @@ final class CameraManager: NSObject, ObservableObject {
 
     func configure() {
         captureQueue.async { [weak self] in
-            self?._configure()
+            self?.configureOnQueue()
         }
     }
 
-    private func _configure() {
+    private func configureOnQueue() {
         session.beginConfiguration()
         defer { session.commitConfiguration() }
 
-        // Front camera
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) else {
-            log.error("No front camera available")
+        // Back camera for sideline tripod capture
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+            log.error("No back camera available")
             return
         }
 
@@ -60,7 +61,7 @@ final class CameraManager: NSObject, ObservableObject {
             return
         }
 
-        // Find best format supporting >= 120fps
+        // Find best format supporting >= 240fps, fallback to highest available
         var bestFormat: AVCaptureDevice.Format?
         var bestRange: AVFrameRateRange?
         var bestWidth: Int32 = 0
@@ -68,14 +69,11 @@ final class CameraManager: NSObject, ObservableObject {
         for format in device.formats {
             let dims = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
             let mediaType = CMFormatDescriptionGetMediaSubType(format.formatDescription)
-            // Prefer 420v (kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
             guard mediaType == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ||
                   mediaType == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange else { continue }
 
             for range in format.videoSupportedFrameRateRanges {
-                if range.maxFrameRate >= 120 {
-                    // Pick the format with the largest width that still supports 120fps
-                    // but don't go above 1920 to save processing
+                if range.maxFrameRate >= 240 {
                     if dims.width > bestWidth && dims.width <= 1920 {
                         bestFormat = format
                         bestRange = range
@@ -85,7 +83,27 @@ final class CameraManager: NSObject, ObservableObject {
             }
         }
 
-        // Fallback: pick highest fps format available
+        // Fallback: try 120fps
+        if bestFormat == nil {
+            for format in device.formats {
+                let dims = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+                let mediaType = CMFormatDescriptionGetMediaSubType(format.formatDescription)
+                guard mediaType == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ||
+                      mediaType == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange else { continue }
+
+                for range in format.videoSupportedFrameRateRanges {
+                    if range.maxFrameRate >= 120 {
+                        if dims.width > bestWidth && dims.width <= 1920 {
+                            bestFormat = format
+                            bestRange = range
+                            bestWidth = dims.width
+                        }
+                    }
+                }
+            }
+        }
+
+        // Final fallback: highest fps format available
         if bestFormat == nil {
             for format in device.formats {
                 let dims = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
@@ -108,10 +126,17 @@ final class CameraManager: NSObject, ObservableObject {
             try device.lockForConfiguration()
             device.activeFormat = selectedFormat
 
-            let targetFPS = min(selectedRange.maxFrameRate, 120.0)
+            let targetFPS = min(selectedRange.maxFrameRate, 240.0)
             let timescale = CMTimeScale(targetFPS)
             device.activeVideoMinFrameDuration = CMTime(value: 1, timescale: timescale)
             device.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: timescale)
+
+            if device.isFocusModeSupported(.locked) {
+                device.focusMode = .locked
+            }
+            if device.isExposureModeSupported(.locked) {
+                device.exposureMode = .locked
+            }
 
             device.unlockForConfiguration()
 
@@ -137,13 +162,6 @@ final class CameraManager: NSObject, ObservableObject {
             session.addOutput(output)
         }
         videoOutput = output
-
-        // Mirror front camera
-        if let connection = output.connection(with: .video) {
-            if connection.isVideoMirroringSupported {
-                connection.isVideoMirrored = true
-            }
-        }
     }
 
     // MARK: - Start / Stop
@@ -195,12 +213,8 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         // Downscale to 480p height, preserve aspect ratio
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        let srcWidth = ciImage.extent.width
         let srcHeight = ciImage.extent.height
         let scale = CGFloat(targetHeight) / srcHeight
-        let destWidth = Int(srcWidth * scale)
-        let destHeight = targetHeight
-
         let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
 
         // Encode to JPEG

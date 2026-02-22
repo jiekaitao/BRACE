@@ -1,7 +1,6 @@
 import Foundation
-import Network
-import os
 import Combine
+import os
 
 private let log = Logger(subsystem: "com.brace.capture", category: "WebSocket")
 
@@ -26,7 +25,7 @@ final class BRACEWebSocket: ObservableObject {
 
     // MARK: - Configuration
 
-    var serverURL: String = "wss://ws.braceml.com/ws/analyze?mode=webcam&fps=120&client=web" {
+    var serverURL: String = "wss://ws.braceml.com/ws/analyze?mode=webcam&fps=240&client=web" {
         didSet { reconnect() }
     }
 
@@ -41,7 +40,7 @@ final class BRACEWebSocket: ObservableObject {
     // MARK: - Private
 
     private var task: URLSessionWebSocketTask?
-    private var session: URLSession?
+    private var urlSession: URLSession?
     private var retryDelay: TimeInterval = 1.0
     private let maxRetryDelay: TimeInterval = 10.0
     private var isStopped = false
@@ -59,16 +58,14 @@ final class BRACEWebSocket: ObservableObject {
     func connect() {
         isStopped = false
         retryDelay = 1.0
-        _connect()
+        doConnect()
     }
 
     func disconnect() {
         isStopped = true
         task?.cancel(with: .normalClosure, reason: nil)
         task = nil
-        DispatchQueue.main.async { [weak self] in
-            self?.state = .disconnected
-        }
+        state = .disconnected
     }
 
     /// Send a JPEG frame with the BRACE binary protocol.
@@ -90,19 +87,19 @@ final class BRACEWebSocket: ObservableObject {
         task?.send(.data(message)) { [weak self] error in
             if let error {
                 log.error("Send error: \(error.localizedDescription)")
-                self?.framesInFlight = max(0, (self?.framesInFlight ?? 1) - 1)
+                DispatchQueue.main.async {
+                    self?.framesInFlight = max(0, (self?.framesInFlight ?? 1) - 1)
+                }
             }
         }
     }
 
     // MARK: - Private
 
-    private func _connect() {
+    private func doConnect() {
         guard !isStopped else { return }
 
-        DispatchQueue.main.async { [weak self] in
-            self?.state = .connecting
-        }
+        state = .connecting
 
         guard let url = URL(string: serverURL) else {
             log.error("Invalid URL: \(self.serverURL)")
@@ -111,13 +108,13 @@ final class BRACEWebSocket: ObservableObject {
 
         let config = URLSessionConfiguration.default
         config.waitsForConnectivity = true
-        session = URLSession(configuration: config)
+        urlSession = URLSession(configuration: config)
 
-        let wsTask = session!.webSocketTask(with: url)
+        let wsTask = urlSession!.webSocketTask(with: url)
         self.task = wsTask
         wsTask.resume()
 
-        // Consider connected once we can receive a message
+        // Start receive loop
         receiveMessage()
 
         // Reset state
@@ -127,10 +124,8 @@ final class BRACEWebSocket: ObservableObject {
         recvCount = 0
         fpsTimer = CFAbsoluteTimeGetCurrent()
 
-        DispatchQueue.main.async { [weak self] in
-            self?.state = .connected
-            self?.retryDelay = 1.0
-        }
+        state = .connected
+        retryDelay = 1.0
         log.info("Connected to \(self.serverURL)")
     }
 
@@ -140,11 +135,15 @@ final class BRACEWebSocket: ObservableObject {
 
             switch result {
             case .success(let message):
-                self.handleMessage(message)
+                DispatchQueue.main.async {
+                    self.handleMessage(message)
+                }
                 self.receiveMessage() // continue receiving
             case .failure(let error):
                 log.error("Receive error: \(error.localizedDescription)")
-                self.handleDisconnect()
+                DispatchQueue.main.async {
+                    self.handleDisconnect()
+                }
             }
         }
     }
@@ -157,21 +156,15 @@ final class BRACEWebSocket: ObservableObject {
         if !sendTimesQueue.isEmpty {
             let sendTime = sendTimesQueue.removeFirst()
             let rtt = (CFAbsoluteTimeGetCurrent() - sendTime) * 1000.0
-            DispatchQueue.main.async { [weak self] in
-                self?.rttMs = rtt
-            }
+            rttMs = rtt
         }
 
         // FPS tracking (1-second window)
         let now = CFAbsoluteTimeGetCurrent()
         let elapsed = now - fpsTimer
         if elapsed >= 1.0 {
-            let inFps = Double(recvCount) / elapsed
-            let outFps = Double(sentCount) / elapsed
-            DispatchQueue.main.async { [weak self] in
-                self?.fpsIn = inFps
-                self?.fpsOut = outFps
-            }
+            fpsIn = Double(recvCount) / elapsed
+            fpsOut = Double(sentCount) / elapsed
             recvCount = 0
             sentCount = 0
             fpsTimer = now
@@ -193,21 +186,16 @@ final class BRACEWebSocket: ObservableObject {
     private func parseResponse(_ text: String) {
         guard let data = text.data(using: .utf8) else { return }
 
-        // Try to decode as MultiSubjectFrameResponse
         do {
             let frame = try JSONDecoder().decode(MultiSubjectFrameResponse.self, from: data)
             let expanded = expandFirstSubjectLandmarks(frame)
-            DispatchQueue.main.async { [weak self] in
-                self?.lastFrame = frame
-                self?.landmarks = expanded
-            }
+            lastFrame = frame
+            landmarks = expanded
         } catch {
-            // Might be a typed message (error, progress, etc.) — ignore for now
             log.debug("Parse skip: \(error.localizedDescription)")
         }
     }
 
-    /// Extract landmarks from the first (or only) subject.
     private func expandFirstSubjectLandmarks(_ frame: MultiSubjectFrameResponse) -> [Landmark] {
         guard let firstSubject = frame.subjects.values.first,
               let sparse = firstSubject.landmarks else {
@@ -217,24 +205,22 @@ final class BRACEWebSocket: ObservableObject {
     }
 
     private func handleDisconnect() {
-        DispatchQueue.main.async { [weak self] in
-            self?.state = .disconnected
-        }
+        state = .disconnected
 
         guard !isStopped else { return }
 
-        // Exponential backoff reconnect
         log.info("Reconnecting in \(self.retryDelay)s")
         DispatchQueue.global().asyncAfter(deadline: .now() + retryDelay) { [weak self] in
-            guard let self, !self.isStopped else { return }
-            self._connect()
+            DispatchQueue.main.async {
+                self?.doConnect()
+            }
         }
         retryDelay = min(retryDelay * 1.5, maxRetryDelay)
     }
 
     private func reconnect() {
         disconnect()
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.connect()
         }
     }

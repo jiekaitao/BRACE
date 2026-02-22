@@ -5,7 +5,7 @@ import Foundation
 /// Indices sent by the backend: [0,1,2,3,4,11,12,13,14,15,16,23,24,25,26,27,28,31,32]
 let kSendIndices: [Int] = [0, 1, 2, 3, 4, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28, 31, 32]
 
-struct SparseLandmark: Codable {
+struct SparseLandmark: Codable, Sendable {
     let i: Int      // MediaPipe joint index
     let x: Double   // normalised 0-1
     let y: Double   // normalised 0-1
@@ -14,7 +14,7 @@ struct SparseLandmark: Codable {
 
 // MARK: - Bounding Box (normalised 0-1)
 
-struct BBox: Codable {
+struct BBox: Codable, Sendable {
     let x1: Double
     let y1: Double
     let x2: Double
@@ -23,7 +23,7 @@ struct BBox: Codable {
 
 // MARK: - Biomechanics
 
-struct Biomechanics: Codable {
+struct Biomechanics: Codable, Sendable {
     let fppa_left: Double?
     let fppa_right: Double?
     let hip_drop: Double?
@@ -39,7 +39,7 @@ struct Biomechanics: Codable {
 
 // MARK: - Injury Risk
 
-struct InjuryRisk: Codable {
+struct InjuryRisk: Codable, Sendable {
     let joint: String
     let risk: String
     let severity: String   // "low", "medium", "high"
@@ -49,7 +49,7 @@ struct InjuryRisk: Codable {
 
 // MARK: - Movement Phase
 
-struct MovementPhase: Codable {
+struct MovementPhase: Codable, Sendable {
     let label: String      // "ascending", "descending", "transition"
     let progress: Double
     let cycle_count: Int
@@ -57,7 +57,7 @@ struct MovementPhase: Codable {
 
 // MARK: - Joint Quality
 
-struct JointQuality: Codable {
+struct JointQuality: Codable, Sendable {
     let scores: [Double]
     let degrading: [Int]
     let deviations: [Double]
@@ -65,7 +65,7 @@ struct JointQuality: Codable {
 
 // MARK: - Fatigue Timeline
 
-struct FatigueTimeline: Codable {
+struct FatigueTimeline: Codable, Sendable {
     let timestamps: [Double]
     let fatigue: [Double]
     let form_scores: [Double]
@@ -73,7 +73,7 @@ struct FatigueTimeline: Codable {
 
 // MARK: - Active Guideline
 
-struct ActiveGuideline: Codable {
+struct ActiveGuideline: Codable, Sendable {
     let name: String
     let display_name: String
     let form_cues: [String]
@@ -81,7 +81,7 @@ struct ActiveGuideline: Codable {
 
 // MARK: - Frame Quality (per-frame movement quality)
 
-struct FrameQuality: Codable {
+struct FrameQuality: Codable, Sendable {
     let movement_phase: MovementPhase?
     let form_score: Double?
     let joint_quality: JointQuality?
@@ -95,7 +95,7 @@ struct FrameQuality: Codable {
 
 // MARK: - Cluster Info
 
-struct ClusterInfo: Codable {
+struct ClusterInfo: Codable, Sendable {
     let count: Int?
     let mean_score: Double?
     let anomaly_count: Int?
@@ -105,7 +105,7 @@ struct ClusterInfo: Codable {
 
 // MARK: - Per-Subject Data (multi-subject response)
 
-struct SubjectData: Codable {
+struct SubjectData: Codable, Sendable {
     let label: String
     let phase: String          // "calibrating", "normal", "anomaly"
     let landmarks: [SparseLandmark]?
@@ -125,23 +125,16 @@ struct SubjectData: Codable {
 
 // MARK: - Multi-Subject Frame Response (top-level WS message)
 
-struct MultiSubjectFrameResponse: Codable {
+struct MultiSubjectFrameResponse: Codable, Sendable {
     let frame_index: Int
     let video_time: Double?
     let subjects: [String: SubjectData]
     let active_track_ids: [Int]
 }
 
-// MARK: - Typed Messages
-
-struct ErrorMessage: Codable {
-    let type: String
-    let message: String
-}
-
 // MARK: - Full 33-joint Landmark Array
 
-struct Landmark {
+struct Landmark: Equatable, Sendable {
     var x: Double = 0
     var y: Double = 0
     var visibility: Double = 0
