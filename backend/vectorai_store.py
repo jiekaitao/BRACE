@@ -1,12 +1,12 @@
 """VectorAI DB client wrapper — all vector storage and similarity search operations.
 
 Provides persistent vector storage via Actian VectorAI DB (gRPC) for:
-- Cross-session person re-identification (CLIP/OSNet embeddings)
+- Cross-session person re-identification (OSNet 512D embeddings)
 - Motion segment similarity search
 - Vector-based activity classification
 
-Graceful degradation: if VectorAI is unavailable, all methods return None/empty
-and the system falls back to in-memory behaviour.
+VectorAI is a required dependency. The backend will fail to start if the
+VectorAI service is unreachable.
 
 Internal client adapters:
 - _GrpcVectorAIClient: real gRPC client for the VDSS service
@@ -44,7 +44,7 @@ except ImportError:
 
 # Collection definitions
 _COLLECTIONS = {
-    "person_embeddings": {"dimension": 768, "description": "CLIP person re-ID embeddings"},
+    "person_embeddings": {"dimension": 512, "description": "OSNet person re-ID embeddings"},
     "motion_segments": {"dimension": 42, "description": "SRP motion feature vectors"},
     "activity_templates": {"dimension": 42, "description": "Labeled reference movement templates"},
 }
@@ -92,6 +92,15 @@ class _GrpcVectorAIClient:
         )
         if open_resp.status.code != 0 and "already" not in open_resp.status.message.lower():
             raise RuntimeError(open_resp.status.message)
+
+    # --- delete collection ---
+    def delete_collection(self, name: str) -> None:
+        """Delete a collection (used to recreate with correct dimensions)."""
+        resp = self._stub.DeleteCollection(
+            vdss_service_pb2.DeleteCollectionRequest(collection_name=name)
+        )
+        if resp.status.code != 0 and "not found" not in resp.status.message.lower():
+            raise RuntimeError(resp.status.message)
 
     # --- insert ---
     def insert(
@@ -209,39 +218,74 @@ class VectorAIStore:
 
         # Try native gRPC first, then fall back to CortexClient SDK
         if _GRPC_AVAILABLE:
-            try:
-                client = _GrpcVectorAIClient(self._host, self._port)
-                client.health()  # connectivity check
-                self._client = client
-                # Create collections (idempotent)
-                for name, spec in _COLLECTIONS.items():
-                    try:
-                        client.create_collection(name, dimension=spec["dimension"])
-                    except Exception:
-                        pass  # may already exist
-                self._available = True
-                print(f"[vectorai] Connected via gRPC to {self._host}:{self._port}", flush=True)
-                return
-            except Exception as e:
-                print(f"[vectorai] gRPC connection failed ({e})", flush=True)
+            client = _GrpcVectorAIClient(self._host, self._port)
+            client.health()  # connectivity check — raises on failure
+            self._client = client
+            self._ensure_collections(client)
+            self._available = True
+            print(f"[vectorai] Connected via gRPC to {self._host}:{self._port}", flush=True)
+            return
 
         if CortexClient is not None:
-            try:
-                self._client = CortexClient(host=self._host, port=self._port)
-                for name, spec in _COLLECTIONS.items():
-                    try:
-                        self._client.create_collection(
-                            name, dimension=spec["dimension"], description=spec.get("description", ""),
-                        )
-                    except Exception:
-                        pass
-                self._available = True
-                print(f"[vectorai] Connected via CortexClient to {self._host}:{self._port}", flush=True)
-                return
-            except Exception as e:
-                print(f"[vectorai] CortexClient connection failed ({e})", flush=True)
+            self._client = CortexClient(host=self._host, port=self._port)
+            for name, spec in _COLLECTIONS.items():
+                try:
+                    self._client.create_collection(
+                        name, dimension=spec["dimension"], description=spec.get("description", ""),
+                    )
+                except Exception:
+                    pass
+            self._available = True
+            print(f"[vectorai] Connected via CortexClient to {self._host}:{self._port}", flush=True)
+            return
 
-        print("[vectorai] No VectorAI client available — disabled", flush=True)
+        raise RuntimeError(
+            "[vectorai] No VectorAI client available — gRPC stubs not found "
+            "and CortexClient SDK not installed"
+        )
+
+    def _ensure_collections(self, client: _GrpcVectorAIClient) -> None:
+        """Create collections, validating dimensions match.
+
+        If a collection exists with the wrong dimension (e.g. stale 768D
+        person_embeddings), delete and recreate it.
+        """
+        for name, spec in _COLLECTIONS.items():
+            dim = spec["dimension"]
+            try:
+                client.create_collection(name, dimension=dim)
+            except Exception:
+                pass  # may already exist
+
+            # Validate dimensions with a test upsert
+            test_vec = [0.0] * dim
+            test_id = "__dim_check__"
+            try:
+                vec_id = vdss_types_pb2.VectorIdentifier(uuid=test_id)
+                vec_obj = vdss_types_pb2.Vector(data=test_vec, dimension=dim)
+                payload = vdss_types_pb2.Payload(json="{}")
+                resp = client._stub.UpsertVector(
+                    vdss_service_pb2.UpsertVectorRequest(
+                        collection_name=name,
+                        vector_id=vec_id,
+                        vector=vec_obj,
+                        payload=payload,
+                    )
+                )
+                if resp.status.code != 0:
+                    raise RuntimeError(resp.status.message)
+            except Exception as e:
+                # Dimension mismatch — delete and recreate
+                print(
+                    f"[vectorai] Collection '{name}' has wrong dimensions, "
+                    f"recreating with dim={dim}: {e}",
+                    flush=True,
+                )
+                try:
+                    client.delete_collection(name)
+                except Exception:
+                    pass
+                client.create_collection(name, dimension=dim)
 
     # ------------------------------------------------------------------
     # Health
@@ -258,7 +302,7 @@ class VectorAIStore:
             return False
 
     # ------------------------------------------------------------------
-    # Person embeddings (dim=768, CLIP)
+    # Person embeddings (dim=512, OSNet)
     # ------------------------------------------------------------------
 
     def store_person_embedding(
@@ -268,7 +312,7 @@ class VectorAIStore:
         session_id: str,
         timestamp: float | None = None,
     ) -> None:
-        """Store a person appearance embedding for cross-session re-ID."""
+        """Store a person appearance embedding (512D OSNet) for cross-session re-ID."""
         if not self._available:
             return
         try:
@@ -282,7 +326,7 @@ class VectorAIStore:
                 }],
             )
         except Exception as e:
-            print(f"[vectorai] store_person_embedding failed: {e}", flush=True)
+            print(f"[vectorai] WARNING: store_person_embedding failed: {e}", flush=True)
 
     def find_person(
         self,
@@ -290,7 +334,7 @@ class VectorAIStore:
         threshold: float = 0.85,
         top_k: int = 5,
     ) -> dict | None:
-        """Search for a matching person by embedding similarity.
+        """Search for a matching person by embedding similarity (512D OSNet).
 
         Returns the best match above *threshold* as
         ``{"person_id": str, "session_id": str, "score": float}``
@@ -315,7 +359,7 @@ class VectorAIStore:
                 }
             return None
         except Exception as e:
-            print(f"[vectorai] find_person failed: {e}", flush=True)
+            print(f"[vectorai] WARNING: find_person failed: {e}", flush=True)
             return None
 
     # ------------------------------------------------------------------
@@ -347,7 +391,7 @@ class VectorAIStore:
                 }],
             )
         except Exception as e:
-            print(f"[vectorai] store_motion_segment failed: {e}", flush=True)
+            print(f"[vectorai] WARNING: store_motion_segment failed: {e}", flush=True)
 
     def find_similar_movements(
         self,
@@ -374,7 +418,7 @@ class VectorAIStore:
                 for r in results
             ]
         except Exception as e:
-            print(f"[vectorai] find_similar_movements failed: {e}", flush=True)
+            print(f"[vectorai] WARNING: find_similar_movements failed: {e}", flush=True)
             return []
 
     # ------------------------------------------------------------------
@@ -400,7 +444,7 @@ class VectorAIStore:
                 }],
             )
         except Exception as e:
-            print(f"[vectorai] store_activity_template failed: {e}", flush=True)
+            print(f"[vectorai] WARNING: store_activity_template failed: {e}", flush=True)
 
     def classify_activity(
         self,
@@ -429,5 +473,5 @@ class VectorAIStore:
                 return best["metadata"]["activity_name"], score
             return None, score
         except Exception as e:
-            print(f"[vectorai] classify_activity failed: {e}", flush=True)
+            print(f"[vectorai] WARNING: classify_activity failed: {e}", flush=True)
             return None, 0.0

@@ -378,12 +378,14 @@ class IdentityResolver:
 
                 if subject_id is None:
                     # Try VectorAI cross-session lookup before creating new subject
+                    # Only use 512D OSNet embeddings — skip during post-cut (CLIP 768D)
                     vectorai_person_id = None
-                    if (
-                        self._vectorai_store is not None
-                        and emb is not None
+                    _emb_is_512d = (
+                        emb is not None
+                        and emb.shape[0] == 512
                         and np.linalg.norm(emb) >= 1e-8
-                    ):
+                    )
+                    if self._vectorai_store is not None and _emb_is_512d:
                         try:
                             match = self._vectorai_store.find_person(
                                 emb, threshold=self._vectorai_person_threshold
@@ -415,11 +417,8 @@ class IdentityResolver:
                         gallery.proportions.add(limbs)
 
                     # Store embedding in VectorAI for future cross-session matching
-                    if (
-                        self._vectorai_store is not None
-                        and emb is not None
-                        and np.linalg.norm(emb) >= 1e-8
-                    ):
+                    # Only store 512D OSNet embeddings — skip CLIP 768D from post-cut mode
+                    if self._vectorai_store is not None and _emb_is_512d:
                         try:
                             self._vectorai_store.store_person_embedding(
                                 emb,

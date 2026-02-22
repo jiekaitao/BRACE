@@ -773,14 +773,10 @@ export default function StackPage() {
 
         {/* ─── SECTION 5: Architecture ─── */}
         <Section
-          badge="For the curious"
+          badge="Architecture"
           badgeColor="gray"
-          title="Architecture"
+          title="The Full Stack"
         >
-          <h3 className="text-base font-bold text-[#3C3C3C] mb-3">
-            The Full Stack
-          </h3>
-
           {/* Architecture diagram */}
           <div className="my-5 rounded-xl border border-[#F0F0F0] bg-[#FAFAFA] overflow-hidden font-mono text-xs sm:text-sm leading-relaxed">
             <div className="p-4 sm:p-5 space-y-3">
@@ -853,6 +849,12 @@ export default function StackPage() {
             Pro · UMAP · scikit-learn
           </div>
         </Section>
+
+        {/* Logo */}
+        <div className="flex justify-center py-10">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="BRACE" className="w-[200px]" />
+        </div>
       </div>
     </div>
   );

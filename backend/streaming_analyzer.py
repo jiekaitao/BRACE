@@ -84,7 +84,7 @@ class StreamingAnalyzer:
 
     MAX_ANALYSIS_WINDOW = 2000  # ~67 seconds at 30fps
 
-    def __init__(self, fps: float = 30.0, cluster_threshold: float = 2.0, risk_modifiers: Any = None):
+    def __init__(self, fps: float = 30.0, cluster_threshold: float = 2.0, risk_modifiers: Any = None, vectorai_store: Any = None):
         self.fps = fps
         self.cluster_threshold = cluster_threshold
 
@@ -160,6 +160,12 @@ class StreamingAnalyzer:
         # Movement quality tracker (biomechanics, form scoring, fatigue detection)
         self._quality_tracker = MovementQualityTracker(fps=fps, risk_modifiers=risk_modifiers)
         self._cluster_quality: dict[int, dict] = {}  # per-cluster quality analysis
+
+        # VectorAI store for motion segment persistence
+        self._vectorai_store = vectorai_store
+        self._session_id: str = ""  # set externally by caller
+        self._person_id: str = ""   # set externally by caller
+        self._stored_clusters: set[int] = set()  # clusters already stored in VectorAI
 
 
     def process_frame(self, landmarks_xyzv: np.ndarray | None, img_wh: tuple[int, int] | None = None) -> dict[str, Any]:
@@ -446,6 +452,38 @@ class StreamingAnalyzer:
             self._reps_version += 1
             self._cluster_quality = cluster_quality
             self._last_analysis_frame = n_total
+
+        # Store new cluster mean features in VectorAI for cross-session search
+        if self._vectorai_store is not None:
+            for cid, segs in cluster_segs.items():
+                if cid in self._stored_clusters:
+                    continue
+                if len(segs) < 2:
+                    continue
+                # Use the mean SRP feature vector (not raw hip-centered)
+                seg_means = []
+                for s in segs:
+                    if "features" in s:
+                        seg_means.append(np.mean(s["features"], axis=0))
+                if not seg_means:
+                    continue
+                mean_feat = np.mean(seg_means, axis=0).astype(np.float32)
+                activity_label = self._activity_labels.get(cid, "unknown")
+                risk_score = 0.0
+                cq = cluster_quality.get(cid)
+                if cq and cq.get("enough_data"):
+                    risk_score = cq.get("composite_fatigue", 0.0)
+                try:
+                    self._vectorai_store.store_motion_segment(
+                        features=mean_feat,
+                        activity_label=activity_label,
+                        session_id=self._session_id,
+                        person_id=self._person_id,
+                        risk_score=risk_score,
+                    )
+                    self._stored_clusters.add(cid)
+                except Exception as e:
+                    print(f"[vectorai] WARNING: store_motion_segment in analysis failed: {e}", flush=True)
 
     def reset(self) -> None:
         """Reset all accumulated state (e.g., on video loop)."""

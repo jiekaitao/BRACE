@@ -39,7 +39,7 @@ docker compose --profile nvidia logs -f backend       # Tail backend logs (NVIDI
 
 The `run.sh` script auto-detects which profile to use based on the OS and GPU availability. It also starts Cloudflare Tunnel (braceml.com) and Tailscale Funnel for public HTTPS access.
 
-**Docker services**: Caddy (3080→80, reverse proxy), Frontend (3000), Backend (8001→8000), MongoDB (27017, internal), VectorAI (5555→50051, optional).
+**Docker services**: Caddy (3080→80, reverse proxy), Frontend (3000), Backend (8001→8000), MongoDB (27017, internal), VectorAI (5555→50051, required).
 
 **Hot-reload in production compose**: These files are bind-mounted and take effect on `docker compose restart backend` (or `backend-cpu` on Mac): `main.py`, `streaming_analyzer.py`, `subject_manager.py`, `gemini_classifier.py`, `tensorrt_utils.py`, `identity_resolver.py`, `multi_person_tracker.py`, `botsort_tracker.py`, `movement_quality.py`, `movement_guidelines.py`, `motion_segments.py`, `risk_profile.py`, `chat_agent.py`, `device_utils.py`, `vectorai_store.py`, `vector_movement_search.py`, `concussion_pipeline.py`, `jersey_detector.py`, `player_risk_engine.py`, `basketball_processor.py`, `vector_activity_classifier.py`, `dashboard_api.py`, `db.py`, `auth.py`. All other backend changes require rebuilding the backend image. New files require adding a bind-mount in `docker-compose.yml` and running `docker compose up -d backend` (recreate, not just restart).
 
@@ -217,7 +217,7 @@ WS /ws/games/{game_id} → real-time progress to frontend dashboard
 - `backend/chat_agent.py` — Gemini 2.5 Pro injury intake agent (multi-turn, extracts structured `InjuryProfile` JSON). Uses `gemini-2.5-pro` model, NOT flash.
 - `backend/risk_profile.py` — `RiskModifiers` dataclass, per-injury threshold scaling (FPPA, hip drop, trunk lean, asymmetry, angular velocity), `apply_modifiers()` for personalization
 - `backend/vector_movement_search.py` — `MovementSearchEngine` for semantic cross-session motion similarity via VectorAI
-- `backend/vectorai_store.py` — VectorAI gRPC integration for semantic movement search (optional, graceful degradation)
+- `backend/vectorai_store.py` — VectorAI gRPC integration for semantic movement search (required, raises at startup if unavailable)
 - `backend/basketball_processor.py` — Async game analysis pipeline: video → per-player biomechanics + risk status
 - `backend/player_risk_engine.py` — `PlayerRiskEngine`: GREEN/YELLOW/RED status, injury event consolidation, workload tracking, pull recommendations
 - `backend/jersey_detector.py` — `JerseyDetector` using Gemini 2.5 Flash for jersey number/color identification
@@ -275,7 +275,7 @@ WS /ws/games/{game_id} → real-time progress to frontend dashboard
 - **Skeleton interpolation**: Uses `performance.now()` receipt time (NOT `video.currentTime`) for smooth 60fps interpolation. `video.currentTime` updates in discrete ~33ms steps causing jitter.
 - **Movement quality**: `MovementQualityTracker` runs per-frame (bone-length projection filter, biomechanical angles, joint angular velocity, Isolation Forest anomaly scoring, rule-based injury risk thresholds, Center of Mass estimation, form score, phase detection) and per-cluster (ROM decay, SPARC, LDLJ, EWMA, CUSUM, cross-correlation, sample entropy, spectral median frequency, kinematic chain sequencing, composite fatigue). Composite fatigue is a weighted score: ROM 0.25, EWMA 0.20, CUSUM 0.20, correlation 0.15, SPARC 0.08, LDLJ 0.07, spread 0.05. Form score = deviation from cluster representative trajectory (0-100). The `quality` dict is included in the WebSocket response and stored on `SubjectState.quality` in the frontend.
 - **VR bbox coordinate flip**: BRACE uses image-space y=0 at top; Unity viewport y=0 at bottom. VR clients must flip Y when converting bounding boxes.
-- **VectorAI graceful degradation**: If VectorAI DB is unavailable, the system continues without semantic search — all `_vectorai_store` checks are guarded.
+- **VectorAI is required**: The backend raises at startup if VectorAI is unreachable. Person embeddings use 512D OSNet (not CLIP 768D). Motion segments are stored after clustering in `StreamingAnalyzer.run_analysis()`. The `_ensure_collections()` method auto-detects and recreates collections with wrong dimensions.
 - **Gemini SDK**: Uses `google-genai` SDK (NOT `google-generativeai`). `GeminiActivityClassifier` and `InjuryChatAgent` use `gemini-2.5-pro`; `JerseyDetector` uses `gemini-2.5-flash`. Classifier sends image frames; chat agent does multi-turn text extracting structured JSON `{"injuries": [...], "complete": bool}`.
 - **Risk personalization**: `RiskModifiers` scales thresholds per-metric (`fppa_scale`, `hip_drop_scale`, etc.) + `monitor_joints` list. Applied in `MovementQualityTracker` at runtime. Persisted in MongoDB via auth profile endpoints.
 - **UMAP embedding**: Background async refit produces `"full"` update (all points + cluster IDs). Between refits, `run_umap_transform()` uses nearest-neighbor lookup in feature space (NOT UMAP `transform()` which is too noisy for single points) and sends `"current_only"` with just the index. Frontend handles three message types: `"full"` (replace all), `"append"` (add points — blocked during replay), `"current_only"` (snap current position to nearest existing point).
@@ -291,7 +291,7 @@ WS /ws/games/{game_id} → real-time progress to frontend dashboard
 | `DISABLE_REID` | — | Set to `1` for pure ByteTrack (no appearance matching) |
 | `YOLO_MODEL` | `yolo11m-pose.pt` | YOLO model file (auto-exports to TensorRT FP16) |
 | `MONGODB_URI` | `mongodb://mongo:27017/brace` | MongoDB connection string |
-| `VECTORAI_HOST` / `VECTORAI_PORT` | `vectorai` / `50051` | VectorAI gRPC (optional) |
+| `VECTORAI_HOST` / `VECTORAI_PORT` | `vectorai` / `50051` | VectorAI gRPC (required) |
 | `NEXT_PUBLIC_WS_URL` | auto-detected | WebSocket endpoint override (build-time). Leave unset for auto-detection. |
 | `NEXT_PUBLIC_API_URL` | auto-detected | HTTP API base override (build-time). Leave unset for auto-detection. |
 

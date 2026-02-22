@@ -10,10 +10,11 @@ from streaming_analyzer import StreamingAnalyzer
 class SubjectManager:
     """Maps track_ids to StreamingAnalyzer instances with lifecycle management."""
 
-    def __init__(self, fps: float = 30.0, cluster_threshold: float = 2.0, risk_modifiers: Any = None):
+    def __init__(self, fps: float = 30.0, cluster_threshold: float = 2.0, risk_modifiers: Any = None, vectorai_store: Any = None):
         self.fps = fps
         self.cluster_threshold = cluster_threshold
         self.risk_modifiers = risk_modifiers
+        self.vectorai_store = vectorai_store
         self.analyzers: dict[int, StreamingAnalyzer] = {}
         self._track_to_label: dict[int, str] = {}
         self._next_label_idx = 1
@@ -33,6 +34,7 @@ class SubjectManager:
                 fps=self.fps,
                 cluster_threshold=self.cluster_threshold,
                 risk_modifiers=self.risk_modifiers,
+                vectorai_store=self.vectorai_store,
             )
             self.analyzers[track_id] = analyzer
             self._track_to_label[track_id] = f"S{self._next_label_idx}"

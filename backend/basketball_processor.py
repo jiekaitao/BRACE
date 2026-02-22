@@ -144,6 +144,30 @@ async def process_basketball_game(
                 analyzer.last_seen_frame = frame_idx
                 response = analyzer.process_frame(landmarks, img_wh=(w, h))
 
+                # Re-analysis if needed (segmentation/clustering)
+                if analyzer.needs_reanalysis():
+                    analyzer.run_analysis()
+
+                # Activity classification for unlabeled clusters
+                for cid in analyzer.get_clusters_needing_classification():
+                    label = "unknown"
+                    # Fast path: VectorAI similarity search
+                    if vector_classifier is not None and vector_classifier.available:
+                        features = analyzer.features_list
+                        if features:
+                            label = vector_classifier.classify(features[-1])
+                    # Slow path: Gemini vision classification
+                    if label == "unknown" and gemini_classifier is not None and gemini_classifier.available:
+                        indices = analyzer.get_cluster_frame_indices(cid)
+                        bbox = analyzer.get_cluster_bbox(cid)
+                        if indices and bbox:
+                            frames = gemini_classifier.get_representative_frames(
+                                indices, lambda idx: frame_buffer.get(idx), count=4
+                            )
+                            if frames:
+                                label = gemini_classifier.classify_activity(frames, bbox)
+                    analyzer.set_activity_label(cid, label)
+
                 # Risk engine per player
                 if PlayerRiskEngine is not None:
                     if subject_id not in risk_engines:

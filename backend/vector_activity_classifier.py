@@ -1,8 +1,9 @@
 """VectorAI-based fast-path activity classifier.
 
-Uses semantic similarity search against stored activity templates
-to classify movement segments without calling the Gemini API.
-Gracefully degrades if VectorAI is unavailable.
+Uses semantic similarity search against stored motion segments and
+activity templates to classify movement segments without calling the
+Gemini API. VectorAI must be available — this classifier is a required
+component of the pipeline.
 """
 
 from __future__ import annotations
@@ -70,9 +71,6 @@ class VectorActivityClassifier:
 
         for label, features in templates.items():
             try:
-                self._store.store_movement_segment(
-                    features,
-                    metadata={"activity_label": label, "is_template": True},
-                )
+                self._store.store_activity_template(features, activity_name=label, source="seed")
             except Exception as e:
                 print(f"[vector-clf] seed failed for {label}: {e}", flush=True)

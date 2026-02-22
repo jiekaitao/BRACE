@@ -31,10 +31,23 @@ function formatUptime(seconds: number): string {
   return `${s}s`;
 }
 
-function StreamCard({ stream }: { stream: StreamInfo }) {
+/* ── Small card in the grid ─────────────────────────────────────────── */
+
+function StreamCard({
+  stream,
+  onClick,
+  selected,
+}: {
+  stream: StreamInfo;
+  onClick: () => void;
+  selected: boolean;
+}) {
   return (
-    <Card className="flex flex-col gap-3">
-      {/* Thumbnail */}
+    <Card
+      interactive
+      className={`flex flex-col gap-3 ${selected ? "ring-2 ring-[#1CB0F6]" : ""}`}
+      onClick={onClick}
+    >
       <div className="relative w-full aspect-video bg-[#1A1A2E] rounded-lg overflow-hidden">
         {stream.last_thumbnail ? (
           <img
@@ -47,12 +60,10 @@ function StreamCard({ stream }: { stream: StreamInfo }) {
             Waiting for frames...
           </div>
         )}
-        {/* Live badge */}
         <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/70 rounded-full px-2 py-0.5">
           <span className="w-2 h-2 rounded-full bg-[#FF4B4B] animate-pulse" />
           <span className="text-white text-[10px] font-bold uppercase">Live</span>
         </div>
-        {/* Subject count badge */}
         {stream.subject_count > 0 && (
           <div className="absolute top-2 right-2 bg-[#1CB0F6] text-white text-[10px] font-bold rounded-full px-2 py-0.5">
             {stream.subject_count} {stream.subject_count === 1 ? "person" : "people"}
@@ -60,7 +71,6 @@ function StreamCard({ stream }: { stream: StreamInfo }) {
         )}
       </div>
 
-      {/* Info */}
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-[#3C3C3C] uppercase tracking-wide">
@@ -70,7 +80,6 @@ function StreamCard({ stream }: { stream: StreamInfo }) {
             {stream.client_type.toUpperCase()}
           </span>
         </div>
-
         <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-[#4B4B4B]">
           <div>
             <span className="text-[#AFAFAF]">Uptime: </span>
@@ -80,18 +89,7 @@ function StreamCard({ stream }: { stream: StreamInfo }) {
             <span className="text-[#AFAFAF]">Frames: </span>
             <span className="font-bold">{stream.frame_count.toLocaleString()}</span>
           </div>
-          <div>
-            <span className="text-[#AFAFAF]">FPS: </span>
-            <span className="font-bold">{stream.fps}</span>
-          </div>
-          <div>
-            <span className="text-[#AFAFAF]">Res: </span>
-            <span className="font-bold">
-              {stream.resolution ? `${stream.resolution[0]}x${stream.resolution[1]}` : "--"}
-            </span>
-          </div>
         </div>
-
         <div className="text-[10px] text-[#AFAFAF] font-mono truncate">
           {stream.stream_id.slice(0, 8)}...
         </div>
@@ -100,10 +98,166 @@ function StreamCard({ stream }: { stream: StreamInfo }) {
   );
 }
 
+/* ── Expanded detail panel ──────────────────────────────────────────── */
+
+function StreamDetail({
+  stream,
+  onClose,
+}: {
+  stream: StreamInfo;
+  onClose: () => void;
+}) {
+  const imgRef = useRef<HTMLImageElement>(null);
+  const frameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const dataIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const jsonRef = useRef<HTMLPreElement>(null);
+
+  const [jsonData, setJsonData] = useState<string>("Loading...");
+  const [autoScroll, setAutoScroll] = useState(true);
+
+  // Poll the high-res frame with bounding-box overlay
+  useEffect(() => {
+    const base = getApiBase();
+    const load = () => {
+      if (imgRef.current) {
+        imgRef.current.src = `${base}/api/streams/${stream.stream_id}/frame?w=960&overlay=true&_t=${Date.now()}`;
+      }
+    };
+    load();
+    frameIntervalRef.current = setInterval(load, 500);
+    return () => {
+      if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
+    };
+  }, [stream.stream_id]);
+
+  // Poll the data endpoint
+  useEffect(() => {
+    const base = getApiBase();
+    const load = async () => {
+      try {
+        const res = await fetch(`${base}/api/streams/${stream.stream_id}/data`);
+        if (!res.ok) return;
+        const data = await res.json();
+        setJsonData(JSON.stringify(data, null, 2));
+      } catch {
+        // ignore transient errors
+      }
+    };
+    load();
+    dataIntervalRef.current = setInterval(load, 500);
+    return () => {
+      if (dataIntervalRef.current) clearInterval(dataIntervalRef.current);
+    };
+  }, [stream.stream_id]);
+
+  // Auto-scroll JSON panel to bottom
+  useEffect(() => {
+    if (autoScroll && jsonRef.current) {
+      jsonRef.current.scrollTop = jsonRef.current.scrollHeight;
+    }
+  }, [jsonData, autoScroll]);
+
+  return (
+    <Card className="flex flex-col gap-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#FF4B4B] animate-pulse" />
+            <span className="text-sm font-black text-[#3C3C3C]">
+              {stream.mode === "video" ? "Video" : "Webcam"} Stream
+            </span>
+          </div>
+          <span className="text-[10px] font-bold text-[#AFAFAF] bg-[#F7F7F7] rounded px-1.5 py-0.5">
+            {stream.client_type.toUpperCase()}
+          </span>
+          {stream.subject_count > 0 && (
+            <span className="text-[10px] font-bold text-white bg-[#1CB0F6] rounded-full px-2 py-0.5">
+              {stream.subject_count} {stream.subject_count === 1 ? "person" : "people"}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={onClose}
+          className="text-xs font-bold text-[#AFAFAF] hover:text-[#3C3C3C] transition-colors px-2 py-1"
+        >
+          Close
+        </button>
+      </div>
+
+      {/* Two-column: video + data */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4">
+        {/* Left: frame with bbox overlay */}
+        <div className="flex flex-col gap-2">
+          <div className="relative w-full bg-[#0A0A0A] rounded-xl overflow-hidden">
+            <img
+              ref={imgRef}
+              alt="Live stream with detection overlay"
+              className="w-full h-auto block"
+              style={{ minHeight: 200 }}
+            />
+          </div>
+          {/* Stats bar */}
+          <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#4B4B4B]">
+            <div>
+              <span className="text-[#AFAFAF]">Uptime </span>
+              <span className="font-bold">{formatUptime(stream.uptime_sec)}</span>
+            </div>
+            <div>
+              <span className="text-[#AFAFAF]">Frames </span>
+              <span className="font-bold">{stream.frame_count.toLocaleString()}</span>
+            </div>
+            <div>
+              <span className="text-[#AFAFAF]">Target FPS </span>
+              <span className="font-bold">{stream.fps}</span>
+            </div>
+            <div>
+              <span className="text-[#AFAFAF]">Source </span>
+              <span className="font-bold">
+                {stream.resolution ? `${stream.resolution[0]}x${stream.resolution[1]}` : "--"}
+              </span>
+            </div>
+            <div>
+              <span className="text-[#AFAFAF]">ID </span>
+              <span className="font-bold font-mono">{stream.stream_id.slice(0, 12)}...</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: live JSON data */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-[#3C3C3C]">Response Data</span>
+            <label className="flex items-center gap-1.5 text-[10px] text-[#AFAFAF] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={autoScroll}
+                onChange={(e) => setAutoScroll(e.target.checked)}
+                className="w-3 h-3"
+              />
+              Auto-scroll
+            </label>
+          </div>
+          <pre
+            ref={jsonRef}
+            className="flex-1 bg-[#1A1A2E] text-[#A8D8A8] text-[10px] leading-[1.5] font-mono p-3 rounded-xl overflow-auto"
+            style={{ maxHeight: 480, minHeight: 300 }}
+          >
+            {jsonData}
+          </pre>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/* ── Page ────────────────────────────────────────────────────────────── */
+
 export default function DevStreamsPage() {
   const [streams, setStreams] = useState<StreamInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchStreams = useCallback(async () => {
@@ -113,12 +267,17 @@ export default function DevStreamsPage() {
       const data: StreamsResponse = await res.json();
       setStreams(data.streams);
       setError(null);
+      if (data.streams.length > 0 && selectedId) {
+        if (!data.streams.some((s) => s.stream_id === selectedId)) {
+          setSelectedId(null);
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedId]);
 
   useEffect(() => {
     fetchStreams();
@@ -127,6 +286,8 @@ export default function DevStreamsPage() {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [fetchStreams]);
+
+  const selectedStream = streams.find((s) => s.stream_id === selectedId) ?? null;
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -153,6 +314,15 @@ export default function DevStreamsPage() {
         </div>
       </div>
 
+      {selectedStream && (
+        <div className="mb-6">
+          <StreamDetail
+            stream={selectedStream}
+            onClose={() => setSelectedId(null)}
+          />
+        </div>
+      )}
+
       {loading && streams.length === 0 ? (
         <Card className="flex items-center justify-center py-16">
           <div className="text-center">
@@ -173,7 +343,6 @@ export default function DevStreamsPage() {
       ) : streams.length === 0 ? (
         <Card className="flex items-center justify-center py-16">
           <div className="text-center">
-            <p className="text-4xl mb-3">📡</p>
             <p className="text-sm font-bold text-[#3C3C3C] mb-1">No Active Streams</p>
             <p className="text-xs text-[#AFAFAF]">
               Open the <a href="/analyze" className="text-[#1CB0F6] hover:underline">Analyze</a> page to start a stream
@@ -183,7 +352,14 @@ export default function DevStreamsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {streams.map((stream) => (
-            <StreamCard key={stream.stream_id} stream={stream} />
+            <StreamCard
+              key={stream.stream_id}
+              stream={stream}
+              selected={stream.stream_id === selectedId}
+              onClick={() =>
+                setSelectedId(stream.stream_id === selectedId ? null : stream.stream_id)
+              }
+            />
           ))}
         </div>
       )}

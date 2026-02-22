@@ -96,6 +96,7 @@ class BoTSortTracker:
 
         # BoT-SORT tracker (separate from detection)
         self._tracker = BotSort(**self._tracker_kwargs)
+        self._prev_frame_size: tuple[int, int] | None = None  # (h, w) for CMC reset
 
     def process_frame(self, rgb_frame: np.ndarray) -> list[TrackedDetection]:
         """Detect, track, and extract keypoints for all people in a frame.
@@ -113,6 +114,14 @@ class BoTSortTracker:
         """
         h, w = rgb_frame.shape[:2]
         frame_area = h * w
+
+        # Proactively reset CMC when frame resolution changes to prevent
+        # LK optical flow pyramid size mismatch (Quest 3 sends variable sizes)
+        cur_size = (h, w)
+        if self._prev_frame_size is not None and cur_size != self._prev_frame_size:
+            if hasattr(self._tracker, "cmc"):
+                self._tracker.cmc.prev_img = None
+        self._prev_frame_size = cur_size
 
         # --- Step 1: YOLO detection (no tracking) ---
         results = self.model.predict(
@@ -216,3 +225,4 @@ class BoTSortTracker:
     def reset(self) -> None:
         """Reset BoT-SORT tracker state for a new session (reuses YOLO model)."""
         self._tracker = BotSort(**self._tracker_kwargs)
+        self._prev_frame_size = None

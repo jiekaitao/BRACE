@@ -79,17 +79,13 @@ try:
 except ImportError:
     _JERSEY_DETECTOR_AVAILABLE = False
 
-# VectorAI integration (optional — graceful degradation if unavailable)
+# VectorAI integration (required)
 _vectorai_store = None
 _movement_search = None
 _vector_classifier = None
-try:
-    from vectorai_store import VectorAIStore
-    from vector_movement_search import MovementSearchEngine
-    from vector_activity_classifier import VectorActivityClassifier
-    _VECTORAI_SDK_AVAILABLE = True
-except ImportError:
-    _VECTORAI_SDK_AVAILABLE = False
+from vectorai_store import VectorAIStore
+from vector_movement_search import MovementSearchEngine
+from vector_activity_classifier import VectorActivityClassifier
 
 try:
     import pynvml
@@ -212,21 +208,14 @@ def load_models():
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     print(f"[startup] Upload dir: {UPLOAD_DIR}", flush=True)
 
-    # Initialize VectorAI store (optional — graceful degradation)
+    # Initialize VectorAI store (required — raises on failure)
     global _vectorai_store, _movement_search, _vector_classifier
-    if _VECTORAI_SDK_AVAILABLE:
-        try:
-            _vectorai_store = VectorAIStore()
-            if _vectorai_store.health_check():
-                _movement_search = MovementSearchEngine(_vectorai_store)
-                _vector_classifier = VectorActivityClassifier(_vectorai_store)
-                print("[startup] VectorAI store and search engine initialized", flush=True)
-            else:
-                print("[startup] VectorAI not reachable — disabled", flush=True)
-                _vectorai_store = None
-        except Exception as e:
-            print(f"[startup] VectorAI init failed ({e}) — disabled", flush=True)
-            _vectorai_store = None
+    _vectorai_store = VectorAIStore()
+    if not _vectorai_store.health_check():
+        raise RuntimeError("[startup] VectorAI health check failed after connection")
+    _movement_search = MovementSearchEngine(_vectorai_store)
+    _vector_classifier = VectorActivityClassifier(_vectorai_store)
+    print("[startup] VectorAI store and search engine initialized", flush=True)
 
     # Ensure MongoDB indexes for auth/chat/workout collections
     try:
@@ -283,8 +272,15 @@ def get_active_streams():
 
 
 @app.get("/api/streams/{stream_id}/frame")
-def get_stream_frame(stream_id: str, w: int = Query(default=640, ge=80, le=1920)):
-    """Return the latest frame from a stream as a JPEG image."""
+def get_stream_frame(
+    stream_id: str,
+    w: int = Query(default=640, ge=80, le=1920),
+    overlay: bool = Query(default=False),
+):
+    """Return the latest frame from a stream as a JPEG image.
+
+    If overlay=true, draw bounding boxes and labels on the frame.
+    """
     info = _active_streams.get(stream_id)
     if info is None:
         return Response(status_code=404, content="Stream not found")
@@ -292,16 +288,76 @@ def get_stream_frame(stream_id: str, w: int = Query(default=640, ge=80, le=1920)
     if rgb is None:
         return Response(status_code=204, content="No frame yet")
     h_orig, w_orig = rgb.shape[:2]
+
+    # Work on a copy so we don't mutate the shared frame
+    frame = rgb.copy()
+
+    # Draw bounding boxes if requested
+    if overlay:
+        subjects = info.get("_last_subjects") or {}
+        for sid_str, sdata in subjects.items():
+            bbox = sdata.get("bbox")
+            if bbox is None:
+                continue
+            x1 = int(bbox["x1"] * w_orig)
+            y1 = int(bbox["y1"] * h_orig)
+            x2 = int(bbox["x2"] * w_orig)
+            y2 = int(bbox["y2"] * h_orig)
+            # Green box
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            # Label background
+            label = sdata.get("label", f"S{sid_str}")
+            phase = sdata.get("phase", "")
+            txt = f"{label} [{phase}]"
+            (tw, th), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            cv2.rectangle(frame, (x1, y1 - th - 8), (x1 + tw + 4, y1), (0, 255, 0), -1)
+            cv2.putText(frame, txt, (x1 + 2, y1 - 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
+
     if w < w_orig:
         scale = w / w_orig
         new_h = int(h_orig * scale)
-        resized = cv2.resize(rgb, (w, new_h))
-    else:
-        resized = rgb
-    _, buf = cv2.imencode(".jpg", cv2.cvtColor(resized, cv2.COLOR_RGB2BGR),
+        frame = cv2.resize(frame, (w, new_h))
+    _, buf = cv2.imencode(".jpg", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
                           [cv2.IMWRITE_JPEG_QUALITY, 80])
     return Response(content=buf.tobytes(), media_type="image/jpeg",
                     headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/streams/{stream_id}/data")
+def get_stream_data(stream_id: str):
+    """Return the latest per-subject analysis data for a stream (JSON)."""
+    info = _active_streams.get(stream_id)
+    if info is None:
+        return Response(status_code=404, content="Stream not found")
+    response = info.get("_last_response") or {}
+    subjects = info.get("_last_subjects") or {}
+    # Build a stripped-down per-subject summary (skip heavy fields like
+    # embedding_update, cluster_representatives, srp_joints, etc.)
+    summary: dict[str, Any] = {}
+    for sid_str, sdata in subjects.items():
+        entry: dict[str, Any] = {
+            "label": sdata.get("label"),
+            "phase": sdata.get("phase"),
+            "bbox": sdata.get("bbox"),
+            "cluster_id": sdata.get("cluster_id"),
+            "consistency_score": sdata.get("consistency_score"),
+            "is_anomaly": sdata.get("is_anomaly"),
+            "n_segments": sdata.get("n_segments"),
+            "n_clusters": sdata.get("n_clusters"),
+            "identity_status": sdata.get("identity_status"),
+            "identity_confidence": sdata.get("identity_confidence"),
+            "velocity": sdata.get("velocity"),
+            "rolling_velocity": sdata.get("rolling_velocity"),
+            "fatigue_index": sdata.get("fatigue_index"),
+            "jersey_number": sdata.get("jersey_number"),
+            "jersey_color": sdata.get("jersey_color"),
+        }
+        quality = sdata.get("quality")
+        if quality:
+            entry["quality"] = quality
+        summary[sid_str] = entry
+    return {**response, "subjects": summary}
 
 
 @app.get("/api/gpu-stats")
@@ -398,9 +454,9 @@ def demo_video_thumbnail(filename: str):
 @app.get("/api/vectorai/health")
 def vectorai_health():
     """Return VectorAI connection status."""
-    if _vectorai_store is not None and _vectorai_store.health_check():
+    if _vectorai_store.health_check():
         return {"status": "ok", "host": _vectorai_store._host, "port": _vectorai_store._port}
-    return {"status": "unavailable"}
+    return {"status": "unhealthy", "host": _vectorai_store._host, "port": _vectorai_store._port}
 
 
 @app.get("/api/movements/similar")
@@ -418,8 +474,7 @@ def movements_similar(
         activity_label: (optional) filter to a specific activity
         top_k: number of results (default 5)
     """
-    if _movement_search is None or _vectorai_store is None:
-        return {"error": "VectorAI not available", "results": []}
+    # VectorAI is always available — no guard needed
 
     # Build filters
     filters = {}
@@ -442,9 +497,6 @@ async def movements_similar_post(request: dict):
 
     Body: {"features": [float, ...], "top_k": int, "filters": {...}}
     """
-    if _movement_search is None:
-        return {"error": "VectorAI not available", "results": []}
-
     try:
         features = np.array(request.get("features", []), dtype=np.float32)
         if features.shape[0] == 0:
@@ -460,9 +512,6 @@ async def movements_similar_post(request: dict):
 @app.get("/api/person/{person_id}/history")
 def person_history(person_id: str):
     """Return cross-session history for a person."""
-    if _vectorai_store is None:
-        return {"error": "VectorAI not available", "history": []}
-
     # Query motion_segments filtered by person_id
     # We use a zero vector as a neutral query to get all segments for this person
     try:
@@ -656,9 +705,6 @@ async def seed_activity_templates(body: dict):
 
     Body: {"templates": {"label": [feature_vector], ...}}
     """
-    if _vector_classifier is None:
-        return {"error": "VectorAI not available"}
-
     templates = body.get("templates", {})
     seeded = {}
     for label, features in templates.items():
@@ -686,10 +732,12 @@ async def _process_game_bg(
             and not isinstance(_reid_extractor, DummyExtractor)
         )
         resolver = IdentityResolver(
-            _reid_extractor, vectorai_store=_vectorai_store,
+            _reid_extractor,
+            cross_cut_extractor=_clip_reid_extractor,
+            vectorai_store=_vectorai_store,
         ) if use_reid else None
 
-        manager = SubjectManager(fps=30.0, cluster_threshold=2.0)
+        manager = SubjectManager(fps=30.0, cluster_threshold=2.0, vectorai_store=_vectorai_store)
 
         # Jersey detector
         jersey_det = None
@@ -982,7 +1030,7 @@ async def _handle_webcam_mode(
 ) -> None:
     """Process live webcam frames with multi-person tracking + pose estimation."""
     session_id = str(uuid.uuid4())  # unique per-session for VectorAI tracking
-    manager = SubjectManager(fps=target_fps, cluster_threshold=cluster_threshold, risk_modifiers=risk_modifiers)
+    manager = SubjectManager(fps=target_fps, cluster_threshold=cluster_threshold, risk_modifiers=risk_modifiers, vectorai_store=_vectorai_store)
     loop = asyncio.get_event_loop()
     frame_idx = 0
     vr_selected_subject: int | None = None  # VR client's selected subject
@@ -994,7 +1042,9 @@ async def _handle_webcam_mode(
         and not isinstance(_reid_extractor, DummyExtractor)
     )
     resolver = IdentityResolver(
-        _reid_extractor, vectorai_store=_vectorai_store,
+        _reid_extractor,
+        cross_cut_extractor=_clip_reid_extractor,
+        vectorai_store=_vectorai_store,
     ) if use_reid else None
 
     # Gemini activity classification
@@ -1258,6 +1308,8 @@ async def _handle_webcam_mode(
 
                 analyzer = manager.get_or_create_analyzer(subject_id)
                 analyzer.last_seen_frame = frame_idx
+                analyzer._session_id = session_id
+                analyzer._person_id = label
 
                 # Process through analyzer (pixel coordinates for SRP)
                 response = analyzer.process_frame(landmarks_xyzv, img_wh=(w, h))
@@ -1491,6 +1543,16 @@ async def _handle_webcam_mode(
                     info["resolution"] = [w, h]
                 # Store latest frame for high-res snapshot endpoint
                 info["_last_rgb"] = rgb
+                # Store latest response data for the debug data endpoint
+                info["_last_subjects"] = subjects_data
+                info["_last_response"] = {
+                    "frame_index": frame_idx,
+                    "video_time": round(video_time, 3),
+                    "active_track_ids": active_ids,
+                    "equipment": equipment_data,
+                    "timing": timing_dict,
+                    "subject_count": len(active_ids),
+                }
                 # Generate thumbnail every 30 frames (~1s)
                 if frame_idx % 30 == 0:
                     try:
