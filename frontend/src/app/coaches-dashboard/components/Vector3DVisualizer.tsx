@@ -18,6 +18,8 @@ export function Vector3DVisualizer({ vectorData, playerName }: Vector3DVisualize
   const [isDragging, setIsDragging] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
   const [lastMouse, setLastMouse] = useState({ x: 0, y: 0 });
+  const [lastTouch, setLastTouch] = useState({ x: 0, y: 0 });
+  const [lastPinchDistance, setLastPinchDistance] = useState(0);
   const [autoRotate, setAutoRotate] = useState(true);
 
   const draw = useCallback(() => {
@@ -191,6 +193,73 @@ export function Vector3DVisualizer({ vectorData, playerName }: Vector3DVisualize
     setAutoRotate(true);
   };
 
+  // Touch event handlers for mobile/tablet interaction
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      setIsRotating(true);
+      setAutoRotate(false);
+      setLastTouch({ x: touch.clientX, y: touch.clientY });
+    } else if (e.touches.length === 2) {
+      const touch = e.touches[0];
+      setIsDragging(true);
+      setIsRotating(false);
+      setLastTouch({ x: touch.clientX, y: touch.clientY });
+      const distance = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      setLastPinchDistance(distance);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+
+    if (e.touches.length === 1 && isRotating) {
+      const touch = e.touches[0];
+      const dx = touch.clientX - lastTouch.x;
+      const dy = touch.clientY - lastTouch.y;
+
+      setRotation(prev => ({
+        x: prev.x + dy * 0.01,
+        y: prev.y + dx * 0.01
+      }));
+
+      setLastTouch({ x: touch.clientX, y: touch.clientY });
+    } else if (e.touches.length === 2 && isDragging) {
+      const touch = e.touches[0];
+      const dx = touch.clientX - lastTouch.x;
+      const dy = touch.clientY - lastTouch.y;
+
+      setOffset(prev => ({
+        x: prev.x + dx,
+        y: prev.y + dy
+      }));
+
+      setLastTouch({ x: touch.clientX, y: touch.clientY });
+    }
+
+    if (e.touches.length === 2) {
+      const distance = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      if (lastPinchDistance > 0) {
+        const delta = distance / lastPinchDistance;
+        setZoom(prev => Math.max(0.3, Math.min(3, prev * delta)));
+      }
+      setLastPinchDistance(distance);
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    setIsRotating(false);
+  };
+
   return (
     <motion.div
       className="bg-gray-950 rounded-lg border-4 border-white overflow-hidden shadow-2xl"
@@ -222,6 +291,9 @@ export function Vector3DVisualizer({ vectorData, playerName }: Vector3DVisualize
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       />
       <div className="bg-gray-900 px-4 py-3 border-t-4 border-gray-700">
         <div className="text-xs text-gray-400 space-y-2" style={{ fontFamily: "'Press Start 2P', cursive" }}>
@@ -230,7 +302,7 @@ export function Vector3DVisualizer({ vectorData, playerName }: Vector3DVisualize
             <span>ZOOM: {zoom.toFixed(1)}x</span>
           </div>
           <div className="text-gray-500 text-xs" style={{ fontSize: '8px' }}>
-            DRAG: ROTATE | SHIFT+DRAG: PAN | SCROLL: ZOOM
+            TOUCH: ROTATE | 2-FINGER: PAN/ZOOM | MOUSE: DRAG/SCROLL
           </div>
           <div className="flex gap-2 mt-2">
             <button
@@ -244,6 +316,13 @@ export function Vector3DVisualizer({ vectorData, playerName }: Vector3DVisualize
             >
               {autoRotate ? 'AUTO: ON' : 'AUTO: OFF'}
             </button>
+          </div>
+          <div className="mt-3 pt-3 border-t border-gray-700 space-y-1 text-gray-500" style={{ fontSize: '8px' }}>
+            <div>DIMS 0-9: HEAD IMPACT SENSORS</div>
+            <div>DIMS 10-19: EXERTION LEVELS</div>
+            <div>DIMS 20-29: HEART RATE VARIABILITY</div>
+            <div>DIMS 30-39: MOVEMENT QUALITY</div>
+            <div>DIMS 40-49: PERFORMANCE METRICS</div>
           </div>
         </div>
       </div>

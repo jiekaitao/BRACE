@@ -1,0 +1,334 @@
+{
+  "blue": {
+    "name": "BLUE HAWKS",
+    "color": "#3B82F6",
+    "players": [
+      {
+        "id": 1,
+        "name": "MARINO",
+        "position": "QB",
+        "number": 12,
+        "x": 50,
+        "y": 45,
+        "vectorData": [0.25, 0.31, 0.18, 0.42, 0.28, 0.35, 0.22, 0.19, 0.33, 0.27, 0.45, 0.52, 0.48, 0.51, 0.46, 0.49, 0.53, 0.47, 0.50, 0.44, 0.32, 0.38, 0.29, 0.35, 0.41, 0.37, 0.33, 0.36, 0.39, 0.34, 0.78, 0.82, 0.75, 0.79, 0.81, 0.77, 0.80, 0.76, 0.83, 0.74, 0.85, 0.88, 0.82, 0.86, 0.84, 0.87, 0.89, 0.83, 0.90, 0.81],
+        "reasoning": "Excellent performance metrics and low injury risk. QB shows strong decision-making biometrics and minimal contact exposure. Movement quality is optimal for position."
+      },
+      {
+        "id": 2,
+        "name": "SANDERS",
+        "position": "RB",
+        "number": 20,
+        "x": 50,
+        "y": 55,
+        "vectorData": [0.82, 0.78, 0.85, 0.79, 0.88, 0.81, 0.76, 0.83, 0.80, 0.84, 0.72, 0.78, 0.75, 0.71, 0.76, 0.73, 0.77, 0.74, 0.70, 0.79, 0.68, 0.72, 0.65, 0.70, 0.66, 0.69, 0.71, 0.67, 0.64, 0.73, 0.42, 0.38, 0.45, 0.40, 0.43, 0.39, 0.41, 0.44, 0.37, 0.46, 0.35, 0.38, 0.33, 0.36, 0.34, 0.37, 0.39, 0.32, 0.40, 0.31],
+        "reasoning": "HIGH RISK - Multiple high-impact collisions detected. Relative collision velocity readings exceed safe thresholds at 32+ MPH. Fatigue levels critical. IMMEDIATE SUBSTITUTION REQUIRED to prevent serious injury."
+      },
+      {
+        "id": 3,
+        "name": "RICE",
+        "position": "WR",
+        "number": 80,
+        "x": 80,
+        "y": 25,
+        "vectorData": [0.15, 0.22, 0.18, 0.20, 0.16, 0.19, 0.21, 0.17, 0.23, 0.14, 0.38, 0.42, 0.40, 0.39, 0.41, 0.37, 0.43, 0.36, 0.44, 0.35, 0.25, 0.28, 0.22, 0.26, 0.24, 0.27, 0.23, 0.29, 0.21, 0.30, 0.88, 0.92, 0.85, 0.89, 0.91, 0.87, 0.90, 0.86, 0.93, 0.84, 0.92, 0.95, 0.89, 0.93, 0.91, 0.94, 0.96, 0.90, 0.97, 0.88],
+        "reasoning": "Elite performance. Movement quality exceptional with high-speed route running. Low impact exposure. Biometrics show optimal recovery and hydration. Top tier game readiness."
+      },
+      {
+        "id": 4,
+        "name": "MOSS",
+        "position": "WR",
+        "number": 84,
+        "x": 20,
+        "y": 25,
+        "vectorData": [0.12, 0.18, 0.15, 0.14, 0.16, 0.13, 0.17, 0.11, 0.19, 0.10, 0.55, 0.58, 0.52, 0.56, 0.54, 0.57, 0.53, 0.59, 0.51, 0.60, 0.48, 0.52, 0.45, 0.50, 0.47, 0.51, 0.46, 0.53, 0.44, 0.54, 0.72, 0.75, 0.70, 0.73, 0.71, 0.74, 0.69, 0.76, 0.68, 0.77, 0.78, 0.82, 0.75, 0.79, 0.77, 0.81, 0.76, 0.83, 0.74, 0.84],
+        "reasoning": "CAUTION - Elevated fatigue from previous plays. Heart rate variability shows stress markers. Still in playable range but monitor closely. Consider rotation to maintain peak performance."
+      },
+      {
+        "id": 5,
+        "name": "GONZALEZ",
+        "position": "TE",
+        "number": 88,
+        "x": 68,
+        "y": 35,
+        "vectorData": [0.45, 0.48, 0.42, 0.46, 0.44, 0.47, 0.43, 0.49, 0.41, 0.50, 0.62, 0.65, 0.60, 0.63, 0.61, 0.64, 0.59, 0.66, 0.58, 0.67, 0.35, 0.38, 0.32, 0.36, 0.34, 0.37, 0.33, 0.39, 0.31, 0.40, 0.68, 0.72, 0.65, 0.69, 0.67, 0.71, 0.66, 0.73, 0.64, 0.74, 0.70, 0.73, 0.68, 0.71, 0.69, 0.72, 0.67, 0.74, 0.66, 0.75],
+        "reasoning": "Moderate risk. Blocking assignments show repetitive impact patterns. Recovery metrics acceptable but declining. Consider limiting high-contact plays this drive."
+      },
+      {
+        "id": 6,
+        "name": "OGDEN",
+        "position": "OL",
+        "number": 75,
+        "x": 60,
+        "y": 38,
+        "vectorData": [0.52, 0.55, 0.49, 0.53, 0.51, 0.54, 0.50, 0.56, 0.48, 0.57, 0.68, 0.72, 0.65, 0.69, 0.67, 0.71, 0.66, 0.73, 0.64, 0.74, 0.42, 0.45, 0.40, 0.43, 0.41, 0.44, 0.39, 0.46, 0.38, 0.47, 0.58, 0.62, 0.55, 0.59, 0.57, 0.61, 0.56, 0.63, 0.54, 0.64, 0.60, 0.63, 0.58, 0.61, 0.59, 0.62, 0.57, 0.64, 0.56, 0.65],
+        "reasoning": "Steady performance. Lineman showing expected wear from sustained blocking. No concerning impact spikes. Hydration good. Cleared for continued play with standard monitoring."
+      },
+      {
+        "id": 7,
+        "name": "MUNOZ",
+        "position": "OL",
+        "number": 78,
+        "x": 40,
+        "y": 38,
+        "vectorData": [0.38, 0.42, 0.35, 0.39, 0.37, 0.41, 0.36, 0.43, 0.34, 0.44, 0.55, 0.58, 0.52, 0.56, 0.54, 0.57, 0.53, 0.59, 0.51, 0.60, 0.28, 0.32, 0.25, 0.29, 0.27, 0.31, 0.26, 0.33, 0.24, 0.34, 0.72, 0.75, 0.69, 0.73, 0.71, 0.74, 0.70, 0.76, 0.68, 0.77, 0.75, 0.78, 0.73, 0.76, 0.74, 0.77, 0.72, 0.79, 0.71, 0.80],
+        "reasoning": "Strong metrics across the board. Movement biomechanics show excellent technique. Low injury probability. Power output consistent. Optimal condition for O-line duties."
+      },
+      {
+        "id": 8,
+        "name": "HANNAH",
+        "position": "OL",
+        "number": 73,
+        "x": 55,
+        "y": 40,
+        "vectorData": [0.48, 0.52, 0.45, 0.49, 0.47, 0.51, 0.46, 0.53, 0.44, 0.54, 0.72, 0.75, 0.69, 0.73, 0.71, 0.74, 0.70, 0.76, 0.68, 0.77, 0.55, 0.58, 0.52, 0.56, 0.54, 0.57, 0.53, 0.59, 0.51, 0.60, 0.45, 0.48, 0.42, 0.46, 0.44, 0.47, 0.43, 0.49, 0.41, 0.50, 0.42, 0.45, 0.40, 0.43, 0.41, 0.44, 0.39, 0.46, 0.38, 0.47],
+        "reasoning": "FATIGUE WARNING - Extended play time showing in biometrics. Performance declining from baseline. Movement quality degrading. Recommend rotation after this series to prevent injury risk."
+      },
+      {
+        "id": 9,
+        "name": "ALLEN",
+        "position": "OL",
+        "number": 70,
+        "x": 45,
+        "y": 40,
+        "vectorData": [0.35, 0.38, 0.32, 0.36, 0.34, 0.37, 0.33, 0.39, 0.31, 0.40, 0.48, 0.52, 0.45, 0.49, 0.47, 0.51, 0.46, 0.53, 0.44, 0.54, 0.32, 0.35, 0.29, 0.33, 0.31, 0.34, 0.30, 0.36, 0.28, 0.37, 0.78, 0.82, 0.75, 0.79, 0.77, 0.81, 0.76, 0.83, 0.74, 0.84, 0.80, 0.83, 0.78, 0.81, 0.79, 0.82, 0.77, 0.84, 0.76, 0.85],
+        "reasoning": "Excellent condition. Fresh player showing high performance output. Low fatigue and impact markers. Biometric data optimal. Great substitution choice for tired lineman."
+      },
+      {
+        "id": 10,
+        "name": "PORTER",
+        "position": "OL",
+        "number": 76,
+        "x": 50,
+        "y": 38,
+        "vectorData": [0.42, 0.45, 0.39, 0.43, 0.41, 0.44, 0.40, 0.46, 0.38, 0.47, 0.58, 0.62, 0.55, 0.59, 0.57, 0.61, 0.56, 0.63, 0.54, 0.64, 0.38, 0.42, 0.35, 0.39, 0.37, 0.41, 0.36, 0.43, 0.34, 0.44, 0.65, 0.68, 0.62, 0.66, 0.64, 0.67, 0.63, 0.69, 0.61, 0.70, 0.68, 0.71, 0.66, 0.69, 0.67, 0.70, 0.65, 0.72, 0.64, 0.73],
+        "reasoning": "Good overall status. Standard fatigue for position. No red flags in impact sensors. Movement quality adequate. Cleared for normal rotation schedule."
+      },
+      {
+        "id": 11,
+        "name": "SHARPE",
+        "position": "TE",
+        "number": 84,
+        "x": 32,
+        "y": 35,
+        "vectorData": [0.28, 0.32, 0.25, 0.29, 0.27, 0.31, 0.26, 0.33, 0.24, 0.34, 0.42, 0.45, 0.39, 0.43, 0.41, 0.44, 0.40, 0.46, 0.38, 0.47, 0.22, 0.25, 0.19, 0.23, 0.21, 0.24, 0.20, 0.26, 0.18, 0.27, 0.82, 0.85, 0.79, 0.83, 0.81, 0.84, 0.80, 0.86, 0.78, 0.87, 0.85, 0.88, 0.83, 0.86, 0.84, 0.87, 0.82, 0.89, 0.81, 0.90],
+        "reasoning": "Outstanding blocking TE. Low injury markers with excellent recovery between plays. Versatile in run and pass game. Primary blocker cleared for heavy packages."
+      }
+    ],
+    "bench": [
+      {
+        "id": 100,
+        "name": "YOUNG",
+        "position": "QB",
+        "number": 8,
+        "vectorData": [0.18, 0.22, 0.15, 0.19, 0.17, 0.21, 0.16, 0.23, 0.14, 0.24, 0.25, 0.28, 0.22, 0.26, 0.24, 0.27, 0.23, 0.29, 0.21, 0.30, 0.12, 0.15, 0.09, 0.13, 0.11, 0.14, 0.10, 0.16, 0.08, 0.17, 0.92, 0.95, 0.89, 0.93, 0.91, 0.94, 0.90, 0.96, 0.88, 0.97, 0.94, 0.97, 0.92, 0.95, 0.93, 0.96, 0.91, 0.98, 0.90, 0.99],
+        "reasoning": "Fresh backup QB. All metrics optimal. Rested and ready. Excellent substitution option if starter shows any decline or needs rest."
+      },
+      {
+        "id": 101,
+        "name": "TOMLINSON",
+        "position": "RB",
+        "number": 21,
+        "vectorData": [0.25, 0.28, 0.22, 0.26, 0.24, 0.27, 0.23, 0.29, 0.21, 0.30, 0.32, 0.35, 0.29, 0.33, 0.31, 0.34, 0.30, 0.36, 0.28, 0.37, 0.18, 0.22, 0.15, 0.19, 0.17, 0.21, 0.16, 0.23, 0.14, 0.24, 0.88, 0.92, 0.85, 0.89, 0.87, 0.91, 0.86, 0.93, 0.84, 0.94, 0.90, 0.93, 0.88, 0.91, 0.89, 0.92, 0.87, 0.94, 0.86, 0.95],
+        "reasoning": "READY - Rested RB with excellent power metrics. Zero injury markers. Perfect replacement for high-risk starter. Strong recommendation to substitute immediately."
+      },
+      {
+        "id": 102,
+        "name": "OWENS",
+        "position": "WR",
+        "number": 81,
+        "vectorData": [0.22, 0.25, 0.19, 0.23, 0.21, 0.24, 0.20, 0.26, 0.18, 0.27, 0.45, 0.48, 0.42, 0.46, 0.44, 0.47, 0.43, 0.49, 0.41, 0.50, 0.28, 0.32, 0.25, 0.29, 0.27, 0.31, 0.26, 0.33, 0.24, 0.34, 0.82, 0.85, 0.79, 0.83, 0.81, 0.84, 0.80, 0.86, 0.78, 0.87, 0.85, 0.88, 0.83, 0.86, 0.84, 0.87, 0.82, 0.89, 0.81, 0.90],
+        "reasoning": "Good backup depth. Moderate fatigue from warmup drills but fully cleared for play. Can slot in for any WR rotation without performance drop."
+      },
+      {
+        "id": 103,
+        "name": "WITTEN",
+        "position": "TE",
+        "number": 82,
+        "vectorData": [0.32, 0.35, 0.29, 0.33, 0.31, 0.34, 0.30, 0.36, 0.28, 0.37, 0.42, 0.45, 0.39, 0.43, 0.41, 0.44, 0.40, 0.46, 0.38, 0.47, 0.25, 0.28, 0.22, 0.26, 0.24, 0.27, 0.23, 0.29, 0.21, 0.30, 0.75, 0.78, 0.72, 0.76, 0.74, 0.77, 0.73, 0.79, 0.71, 0.80, 0.78, 0.81, 0.76, 0.79, 0.77, 0.80, 0.75, 0.82, 0.74, 0.83],
+        "reasoning": "Veteran TE with reliable hands. All biometrics in safe ranges. Good rotation option for sustained drives. Can contribute in blocking and receiving equally."
+      },
+      {
+        "id": 104,
+        "name": "BRUCE",
+        "position": "OL",
+        "number": 69,
+        "vectorData": [0.28, 0.32, 0.25, 0.29, 0.27, 0.31, 0.26, 0.33, 0.24, 0.34, 0.35, 0.38, 0.32, 0.36, 0.34, 0.37, 0.33, 0.39, 0.31, 0.40, 0.18, 0.22, 0.15, 0.19, 0.17, 0.21, 0.16, 0.23, 0.14, 0.24, 0.88, 0.92, 0.85, 0.89, 0.87, 0.91, 0.86, 0.93, 0.84, 0.94, 0.90, 0.93, 0.88, 0.91, 0.89, 0.92, 0.87, 0.94, 0.86, 0.95],
+        "reasoning": "Fresh O-lineman with peak power metrics. Zero fatigue markers. Perfect substitution for tired starter #73. Deploy immediately to maintain line integrity."
+      },
+      {
+        "id": 105,
+        "name": "IRVIN",
+        "position": "WR",
+        "number": 88,
+        "vectorData": [0.18, 0.22, 0.15, 0.19, 0.17, 0.21, 0.16, 0.23, 0.14, 0.24, 0.35, 0.38, 0.32, 0.36, 0.34, 0.37, 0.33, 0.39, 0.31, 0.40, 0.15, 0.18, 0.12, 0.16, 0.14, 0.17, 0.13, 0.19, 0.11, 0.20, 0.92, 0.95, 0.89, 0.93, 0.91, 0.94, 0.90, 0.96, 0.88, 0.97, 0.94, 0.97, 0.92, 0.95, 0.93, 0.96, 0.91, 0.98, 0.90, 0.99],
+        "reasoning": "Elite backup receiver. Explosive speed with minimal wear. Ready for clutch situations. Strong option for three-wide receiver sets or injury replacement."
+      }
+    ]
+  },
+  "red": {
+    "name": "RED WOLVES",
+    "color": "#EF4444",
+    "players": [
+      {
+        "id": 201,
+        "name": "BRADY",
+        "position": "QB",
+        "number": 12,
+        "x": 50,
+        "y": 45,
+        "vectorData": [0.88, 0.85, 0.92, 0.86, 0.89, 0.87, 0.91, 0.84, 0.90, 0.83, 0.78, 0.82, 0.75, 0.79, 0.77, 0.81, 0.76, 0.83, 0.74, 0.84, 0.68, 0.72, 0.65, 0.69, 0.67, 0.71, 0.66, 0.73, 0.64, 0.74, 0.32, 0.35, 0.29, 0.33, 0.31, 0.34, 0.30, 0.36, 0.28, 0.37, 0.35, 0.38, 0.33, 0.36, 0.34, 0.37, 0.32, 0.39, 0.31, 0.40],
+        "reasoning": "WARNING - QB taking excessive hits. Head impact sensors elevated. Fatigue from scrambling. Performance still high but injury risk growing. Consider max protect schemes."
+      },
+      {
+        "id": 202,
+        "name": "PETERSON",
+        "position": "RB",
+        "number": 28,
+        "x": 50,
+        "y": 55,
+        "vectorData": [0.35, 0.38, 0.32, 0.36, 0.34, 0.37, 0.33, 0.39, 0.31, 0.40, 0.45, 0.48, 0.42, 0.46, 0.44, 0.47, 0.43, 0.49, 0.41, 0.50, 0.25, 0.28, 0.22, 0.26, 0.24, 0.27, 0.23, 0.29, 0.21, 0.30, 0.85, 0.88, 0.82, 0.86, 0.84, 0.87, 0.83, 0.89, 0.81, 0.90, 0.88, 0.91, 0.86, 0.89, 0.87, 0.90, 0.85, 0.92, 0.84, 0.93],
+        "reasoning": "Outstanding performance. Power back showing elite metrics across all categories. Low injury probability despite heavy workload. Feature back for critical downs."
+      },
+      {
+        "id": 203,
+        "name": "FITZGERALD",
+        "position": "WR",
+        "number": 11,
+        "x": 80,
+        "y": 25,
+        "vectorData": [0.42, 0.45, 0.39, 0.43, 0.41, 0.44, 0.40, 0.46, 0.38, 0.47, 0.55, 0.58, 0.52, 0.56, 0.54, 0.57, 0.53, 0.59, 0.51, 0.60, 0.38, 0.42, 0.35, 0.39, 0.37, 0.41, 0.36, 0.43, 0.34, 0.44, 0.72, 0.75, 0.69, 0.73, 0.71, 0.74, 0.70, 0.76, 0.68, 0.77, 0.75, 0.78, 0.73, 0.76, 0.74, 0.77, 0.72, 0.79, 0.71, 0.80],
+        "reasoning": "Solid performance. Veteran WR showing moderate wear but nothing concerning. Good route running biomechanics. Cleared for all packages with standard monitoring."
+      },
+      {
+        "id": 204,
+        "name": "JOHNSON",
+        "position": "WR",
+        "number": 81,
+        "x": 20,
+        "y": 25,
+        "vectorData": [0.25, 0.28, 0.22, 0.26, 0.24, 0.27, 0.23, 0.29, 0.21, 0.30, 0.32, 0.35, 0.29, 0.33, 0.31, 0.34, 0.30, 0.36, 0.28, 0.37, 0.18, 0.22, 0.15, 0.19, 0.17, 0.21, 0.16, 0.23, 0.14, 0.24, 0.88, 0.92, 0.85, 0.89, 0.87, 0.91, 0.86, 0.93, 0.84, 0.94, 0.90, 0.93, 0.88, 0.91, 0.89, 0.92, 0.87, 0.94, 0.86, 0.95],
+        "reasoning": "Elite status. Speed demon showing minimal fatigue. Explosive performance metrics. Perfect deep threat option. Use for vertical game plan."
+      },
+      {
+        "id": 205,
+        "name": "GRONKOWSKI",
+        "position": "TE",
+        "number": 87,
+        "x": 68,
+        "y": 35,
+        "vectorData": [0.58, 0.62, 0.55, 0.59, 0.57, 0.61, 0.56, 0.63, 0.54, 0.64, 0.68, 0.72, 0.65, 0.69, 0.67, 0.71, 0.66, 0.73, 0.64, 0.74, 0.48, 0.52, 0.45, 0.49, 0.47, 0.51, 0.46, 0.53, 0.44, 0.54, 0.58, 0.62, 0.55, 0.59, 0.57, 0.61, 0.56, 0.63, 0.54, 0.64, 0.60, 0.63, 0.58, 0.61, 0.59, 0.62, 0.57, 0.64, 0.56, 0.65],
+        "reasoning": "Moderate impact accumulation from blocking. TE showing expected contact patterns. Recovery adequate. Performance stable. Manage snap count in heavy run formations."
+      },
+      {
+        "id": 206,
+        "name": "PACE",
+        "position": "OL",
+        "number": 76,
+        "x": 60,
+        "y": 38,
+        "vectorData": [0.38, 0.42, 0.35, 0.39, 0.37, 0.41, 0.36, 0.43, 0.34, 0.44, 0.45, 0.48, 0.42, 0.46, 0.44, 0.47, 0.43, 0.49, 0.41, 0.50, 0.28, 0.32, 0.25, 0.29, 0.27, 0.31, 0.26, 0.33, 0.24, 0.34, 0.78, 0.82, 0.75, 0.79, 0.77, 0.81, 0.76, 0.83, 0.74, 0.84, 0.80, 0.83, 0.78, 0.81, 0.79, 0.82, 0.77, 0.84, 0.76, 0.85],
+        "reasoning": "Strong O-line performance. Technique solid with low injury markers. Good stamina remaining. Anchor of the line - keep in to protect QB."
+      },
+      {
+        "id": 207,
+        "name": "MATTHEWS",
+        "position": "OL",
+        "number": 74,
+        "x": 40,
+        "y": 38,
+        "vectorData": [0.45, 0.48, 0.42, 0.46, 0.44, 0.47, 0.43, 0.49, 0.41, 0.50, 0.58, 0.62, 0.55, 0.59, 0.57, 0.61, 0.56, 0.63, 0.54, 0.64, 0.35, 0.38, 0.32, 0.36, 0.34, 0.37, 0.33, 0.39, 0.31, 0.40, 0.68, 0.72, 0.65, 0.69, 0.67, 0.71, 0.66, 0.73, 0.64, 0.74, 0.70, 0.73, 0.68, 0.71, 0.69, 0.72, 0.67, 0.74, 0.66, 0.75],
+        "reasoning": "Standard wear for guard position. Fatigue building but manageable. Movement quality adequate. Monitor for next series, potential rotation candidate."
+      },
+      {
+        "id": 208,
+        "name": "MAWAE",
+        "position": "OL",
+        "number": 68,
+        "x": 50,
+        "y": 38,
+        "vectorData": [0.32, 0.35, 0.29, 0.33, 0.31, 0.34, 0.30, 0.36, 0.28, 0.37, 0.42, 0.45, 0.39, 0.43, 0.41, 0.44, 0.40, 0.46, 0.38, 0.47, 0.25, 0.28, 0.22, 0.26, 0.24, 0.27, 0.23, 0.29, 0.21, 0.30, 0.82, 0.85, 0.79, 0.83, 0.81, 0.84, 0.80, 0.86, 0.78, 0.87, 0.85, 0.88, 0.83, 0.86, 0.84, 0.87, 0.82, 0.89, 0.81, 0.90],
+        "reasoning": "Center showing excellent command. Snap mechanics clean. Low impact with good recovery between plays. Key communication role - essential to offense."
+      },
+      {
+        "id": 209,
+        "name": "HUTCHINSON",
+        "position": "OL",
+        "number": 76,
+        "x": 45,
+        "y": 40,
+        "vectorData": [0.48, 0.52, 0.45, 0.49, 0.47, 0.51, 0.46, 0.53, 0.44, 0.54, 0.65, 0.68, 0.62, 0.66, 0.64, 0.67, 0.63, 0.69, 0.61, 0.70, 0.42, 0.45, 0.39, 0.43, 0.41, 0.44, 0.40, 0.46, 0.38, 0.47, 0.62, 0.65, 0.59, 0.63, 0.61, 0.64, 0.60, 0.66, 0.58, 0.67, 0.65, 0.68, 0.63, 0.66, 0.64, 0.67, 0.62, 0.69, 0.61, 0.70],
+        "reasoning": "Elevated fatigue from pulling assignments. Impact distribution normal. Performance declining slightly. Consider limiting outside zone runs to preserve energy."
+      },
+      {
+        "id": 210,
+        "name": "WILLIAMS",
+        "position": "OL",
+        "number": 71,
+        "x": 55,
+        "y": 40,
+        "vectorData": [0.35, 0.38, 0.32, 0.36, 0.34, 0.37, 0.33, 0.39, 0.31, 0.40, 0.48, 0.52, 0.45, 0.49, 0.47, 0.51, 0.46, 0.53, 0.44, 0.54, 0.32, 0.35, 0.29, 0.33, 0.31, 0.34, 0.30, 0.36, 0.28, 0.37, 0.75, 0.78, 0.72, 0.76, 0.74, 0.77, 0.73, 0.79, 0.71, 0.80, 0.78, 0.81, 0.76, 0.79, 0.77, 0.80, 0.75, 0.82, 0.74, 0.83],
+        "reasoning": "Reliable tackle performance. All metrics within normal ranges. No concerning patterns. Cleared for full offensive series. Solid pass protection."
+      },
+      {
+        "id": 211,
+        "name": "KELCE",
+        "position": "TE",
+        "number": 87,
+        "x": 32,
+        "y": 35,
+        "vectorData": [0.22, 0.25, 0.19, 0.23, 0.21, 0.24, 0.20, 0.26, 0.18, 0.27, 0.38, 0.42, 0.35, 0.39, 0.37, 0.41, 0.36, 0.43, 0.34, 0.44, 0.18, 0.22, 0.15, 0.19, 0.17, 0.21, 0.16, 0.23, 0.14, 0.24, 0.88, 0.92, 0.85, 0.89, 0.87, 0.91, 0.86, 0.93, 0.84, 0.94, 0.90, 0.93, 0.88, 0.91, 0.89, 0.92, 0.87, 0.94, 0.86, 0.95],
+        "reasoning": "Dynamic pass-catching TE. Low impact from limited blocking. Exceptional route running for position. All biometrics optimal. Primary receiving threat in red zone."
+      }
+    ],
+    "bench": [
+      {
+        "id": 300,
+        "name": "RODGERS",
+        "position": "QB",
+        "number": 12,
+        "vectorData": [0.12, 0.15, 0.09, 0.13, 0.11, 0.14, 0.10, 0.16, 0.08, 0.17, 0.18, 0.22, 0.15, 0.19, 0.17, 0.21, 0.16, 0.23, 0.14, 0.24, 0.08, 0.12, 0.05, 0.09, 0.07, 0.11, 0.06, 0.13, 0.04, 0.14, 0.95, 0.98, 0.92, 0.96, 0.94, 0.97, 0.93, 0.99, 0.91, 1.00, 0.96, 0.99, 0.94, 0.97, 0.95, 0.98, 0.93, 1.00, 0.92, 1.00],
+        "reasoning": "BACKUP READY - Zero game exposure today. All systems optimal. Strong candidate to relieve starter given elevated injury risk. Keep warm for potential substitution."
+      },
+      {
+        "id": 301,
+        "name": "ELLIOTT",
+        "position": "RB",
+        "number": 21,
+        "vectorData": [0.28, 0.32, 0.25, 0.29, 0.27, 0.31, 0.26, 0.33, 0.24, 0.34, 0.35, 0.38, 0.32, 0.36, 0.34, 0.37, 0.33, 0.39, 0.31, 0.40, 0.18, 0.22, 0.15, 0.19, 0.17, 0.21, 0.16, 0.23, 0.14, 0.24, 0.85, 0.88, 0.82, 0.86, 0.84, 0.87, 0.83, 0.89, 0.81, 0.90, 0.88, 0.91, 0.86, 0.89, 0.87, 0.90, 0.85, 0.92, 0.84, 0.93],
+        "reasoning": "Quality backup RB. Rested with strong power metrics. Good rotation option to spell starter. Can maintain offensive effectiveness in relief role."
+      },
+      {
+        "id": 302,
+        "name": "BECKHAM",
+        "position": "WR",
+        "number": 13,
+        "vectorData": [0.32, 0.35, 0.29, 0.33, 0.31, 0.34, 0.30, 0.36, 0.28, 0.37, 0.48, 0.52, 0.45, 0.49, 0.47, 0.51, 0.46, 0.53, 0.44, 0.54, 0.28, 0.32, 0.25, 0.29, 0.27, 0.31, 0.26, 0.33, 0.24, 0.34, 0.78, 0.82, 0.75, 0.79, 0.77, 0.81, 0.76, 0.83, 0.74, 0.84, 0.80, 0.83, 0.78, 0.81, 0.79, 0.82, 0.77, 0.84, 0.76, 0.85],
+        "reasoning": "Playmaker off the bench. Moderate warmup fatigue but ready for deployment. Dynamic option for special packages or injury replacement."
+      },
+      {
+        "id": 303,
+        "name": "GATES",
+        "position": "TE",
+        "number": 85,
+        "vectorData": [0.25, 0.28, 0.22, 0.26, 0.24, 0.27, 0.23, 0.29, 0.21, 0.30, 0.38, 0.42, 0.35, 0.39, 0.37, 0.41, 0.36, 0.43, 0.34, 0.44, 0.22, 0.25, 0.19, 0.23, 0.21, 0.24, 0.20, 0.26, 0.18, 0.27, 0.82, 0.85, 0.79, 0.83, 0.81, 0.84, 0.80, 0.86, 0.78, 0.87, 0.85, 0.88, 0.83, 0.86, 0.84, 0.87, 0.82, 0.89, 0.81, 0.90],
+        "reasoning": "Veteran red zone specialist. Fresh with excellent hands. Strong rotation option for goal-line packages. Reliable target when offense needs big play."
+      },
+      {
+        "id": 304,
+        "name": "JONES",
+        "position": "OL",
+        "number": 72,
+        "vectorData": [0.22, 0.25, 0.19, 0.23, 0.21, 0.24, 0.20, 0.26, 0.18, 0.27, 0.28, 0.32, 0.25, 0.29, 0.27, 0.31, 0.26, 0.33, 0.24, 0.34, 0.15, 0.18, 0.12, 0.16, 0.14, 0.17, 0.13, 0.19, 0.11, 0.20, 0.92, 0.95, 0.89, 0.93, 0.91, 0.94, 0.90, 0.96, 0.88, 0.97, 0.94, 0.97, 0.92, 0.95, 0.93, 0.96, 0.91, 0.98, 0.90, 0.99],
+        "reasoning": "Fresh lineman with peak power output. Zero fatigue markers. Perfect substitution for tired starter #209. Deploy immediately to maintain offensive line strength."
+      },
+      {
+        "id": 305,
+        "name": "HOLT",
+        "position": "WR",
+        "number": 89,
+        "vectorData": [0.15, 0.18, 0.12, 0.16, 0.14, 0.17, 0.13, 0.19, 0.11, 0.20, 0.28, 0.32, 0.25, 0.29, 0.27, 0.31, 0.26, 0.33, 0.24, 0.34, 0.12, 0.15, 0.09, 0.13, 0.11, 0.14, 0.10, 0.16, 0.08, 0.17, 0.95, 0.98, 0.92, 0.96, 0.94, 0.97, 0.93, 0.99, 0.91, 1.00, 0.96, 0.99, 0.94, 0.97, 0.95, 0.98, 0.93, 1.00, 0.92, 1.00],
+        "reasoning": "Elite slot receiver. Pristine biometrics with explosive quickness. Perfect for crucial third-down situations. Minimal wear - ready to make impact plays immediately."
+      }
+    ]
+  }
+}

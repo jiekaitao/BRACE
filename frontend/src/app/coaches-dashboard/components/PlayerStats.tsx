@@ -31,7 +31,7 @@ export function PlayerStats({ players }: PlayerStatsProps) {
       <div className="bg-gray-950 rounded-lg border-4 border-white overflow-hidden shadow-2xl">
         <div className="bg-red-600 px-4 py-2 border-b-4 border-white">
           <h3 className="text-white text-xs" style={{ fontFamily: "'Press Start 2P', cursive" }}>
-            INJURY PROBABILITY
+            CONCUSSION PROBABILITY
           </h3>
         </div>
         <div className="p-4 bg-gray-900">

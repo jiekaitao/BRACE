@@ -9,9 +9,6 @@ interface BenchPlayer {
   number: number;
   concussionProb: number;
   fatigue: number;
-  x: number;
-  y: number;
-  vectorData: number[];
 }
 
 interface BenchProps {
