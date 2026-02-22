@@ -125,9 +125,10 @@ function PointCloud({
     const count = Math.min(points.length, MAX_POINTS);
     mesh.count = count;
 
-    // Jersey color mode: use darkened jersey color for all points
-    const useJersey = showJerseyColors && subject.jerseyColor;
-    const jerseyBase = useJersey ? getColor(jerseyDisplayColor(subject.jerseyColor)) : null;
+    // Jersey color mode: prefer visual team color (K-Means) over Gemini string
+    const jerseyHex = subject.teamColor ?? (subject.jerseyColor ? jerseyDisplayColor(subject.jerseyColor) : null);
+    const useJersey = showJerseyColors && jerseyHex;
+    const jerseyBase = useJersey ? getColor(jerseyHex) : null;
     const jerseyDark = jerseyBase ? darkenColor(jerseyBase, 0.7) : null;
 
     for (let i = 0; i < count; i++) {

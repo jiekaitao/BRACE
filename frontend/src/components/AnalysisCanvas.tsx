@@ -108,7 +108,7 @@ export default function AnalysisCanvas({
 
         const isSelected = trackId === selectedId;
         const bbox = subject.bbox;
-        const subjectColor = isSelected ? getSubjectColor(trackId) : "#999999";
+        const subjectColor = isSelected ? getSubjectColor(trackId) : (subject.teamColor ?? "#999999");
 
         // Non-selected: only draw a small label chip above head (Minecraft-style step-function)
         if (!isSelected) {

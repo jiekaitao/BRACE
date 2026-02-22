@@ -411,6 +411,8 @@ export function useAnalysisWebSocket(
               jerseyColor: null,
               jerseyCropBase64: null,
               jerseyGeminiResponse: null,
+              teamId: null,
+              teamColor: null,
               replayTimeline: [],
               firstPassVelocityLen: 0,
               lastSeenTime: performance.now(),
@@ -483,6 +485,14 @@ export function useAnalysisWebSocket(
           }
           if (subjectData.jersey_gemini_response) {
             state.jerseyGeminiResponse = subjectData.jersey_gemini_response;
+          }
+
+          // Update team clustering data
+          if (subjectData.team_id !== undefined) {
+            state.teamId = subjectData.team_id ?? null;
+          }
+          if (subjectData.team_color !== undefined) {
+            state.teamColor = subjectData.team_color ?? null;
           }
 
           // Accumulate velocity history (skip during replay — use cached first-pass data)

@@ -36,5 +36,15 @@ All VectorAI code used "graceful degradation" — failures were silently swallow
 
 ## Concussion Risk Detection
 
+## Team Detection
+
+### Challenge: Gemini Color Strings Fragile for Team Clustering
+Gemini 2.5 Flash returns jersey color as a free-text string ("dark blue", "navy", "blue"), and the original `cluster_teams()` function groups by exact string match. This meant the same team could be split into multiple "teams" if Gemini returned slightly different color descriptions across subjects. We solved this by adding `cluster_teams_visual()` — a K-Means clustering approach on HSV color histograms extracted from actual player crops. Each crop's upper 60% (torso region) is converted to HSV, binned into a 16-hue x 8-saturation = 128-dim normalized histogram, then all subjects are clustered via K-Means (k=2). This is robust to lighting variation and Gemini wording inconsistency. Representative team colors are derived from the mean HSV of each cluster's torso pixels and converted to hex for frontend display.
+
+### Challenge: Uniform-Color Histograms Break K-Means in Tests
+During testing, synthetic solid-color crops produced delta-function histograms (single bin = 1.0, 127 bins = 0.0). In 128-dim space, the Euclidean distance between any two such histograms is always sqrt(2) unless they hit the exact same bin. Adjacent hue bins (e.g., bin 6 vs bin 7 for two shades of red) were equidistant from blue bins (86, 87), so K-Means couldn't distinguish teams. Adding +-15 pixel noise to test crops produced realistic multi-bin histogram spread, fixing the clustering.
+
+## Concussion Risk Detection
+
 ### Challenge: Concussion Rating Always 100/100
 The concussion rating always showed 100/100 during any motion because: (1) Head keypoints (nose, ears) were dropped in the COCO→MediaPipe mapping, so the head position was never actually tracked. (2) The `raw_joints` array is always shape (14,2) — the feature joint subset — so the `len(raw_joints)==33` check always failed. (3) The fallback used `_jerk_ema * 500.0` (whole-body SRP jerk) which instantly saturated to 100. We fixed this by adding nose/ear mappings to `_COCO_TO_MP`, extracting and smoothing head landmarks separately in the streaming analyzer, and replacing the broken jerk-based score with proper head-specific kinematics: linear acceleration (g) from nose displacement, angular velocity (rad/s) from ear-to-ear angle changes, and an adaptive baseline z-score for spike detection. A peak-hold + exponential decay mechanism prevents flickering. Normal basketball now scores 0-15; only actual head impacts spike above 50.

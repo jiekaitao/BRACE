@@ -12,8 +12,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 from jersey_detector import (
     JerseyDetector,
     JerseyInfo,
+    TeamClustering,
     parse_jersey_response,
     cluster_teams,
+    cluster_teams_visual,
     _encode_crop_jpeg,
 )
 
@@ -273,3 +275,84 @@ class TestJerseyDetector:
         detector._init_error = "no sdk"
         detector._model = None
         assert not detector.available
+
+
+# ---------------------------------------------------------------------------
+# Visual K-Means team clustering tests
+# ---------------------------------------------------------------------------
+
+def _make_uniform_crop(r: int, g: int, b: int, h: int = 100, w: int = 80, seed: int = 0) -> np.ndarray:
+    """Create an RGB crop with base color + slight noise (realistic jersey)."""
+    rng = np.random.RandomState(seed)
+    crop = np.zeros((h, w, 3), dtype=np.uint8)
+    crop[:, :] = [r, g, b]
+    noise = rng.randint(-15, 16, size=(h, w, 3), dtype=np.int16)
+    crop = np.clip(crop.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+    return crop
+
+
+class TestClusterTeamsVisual:
+    def test_two_distinct_teams(self):
+        """Red vs blue crops should yield 2 teams with correct hex colors."""
+        crops = {
+            1: _make_uniform_crop(220, 30, 30, seed=1),   # red
+            2: _make_uniform_crop(200, 20, 20, seed=2),    # red
+            3: _make_uniform_crop(30, 30, 220, seed=3),    # blue
+            4: _make_uniform_crop(20, 20, 200, seed=4),    # blue
+        }
+        result = cluster_teams_visual(crops, k=2)
+        assert result is not None
+        assert len(result.assignments) == 4
+        assert len(result.team_colors) == 2
+        # Red subjects should be in the same team
+        assert result.assignments[1] == result.assignments[2]
+        # Blue subjects should be in the same team
+        assert result.assignments[3] == result.assignments[4]
+        # Red and blue should be in different teams
+        assert result.assignments[1] != result.assignments[3]
+
+    def test_hex_color_format(self):
+        """Team colors should be valid hex strings."""
+        crops = {
+            1: _make_uniform_crop(255, 0, 0, seed=10),
+            2: _make_uniform_crop(0, 0, 255, seed=11),
+        }
+        result = cluster_teams_visual(crops, k=2)
+        assert result is not None
+        for color in result.team_colors.values():
+            assert color.startswith("#")
+            assert len(color) == 7
+            # Valid hex chars
+            int(color[1:], 16)
+
+    def test_fewer_crops_than_k_returns_none(self):
+        """Should return None if fewer valid crops than k."""
+        crops = {1: _make_uniform_crop(255, 0, 0, seed=20)}
+        result = cluster_teams_visual(crops, k=2)
+        assert result is None
+
+    def test_empty_crops_returns_none(self):
+        result = cluster_teams_visual({}, k=2)
+        assert result is None
+
+    def test_small_crops_skipped(self):
+        """Crops smaller than 30px should be skipped."""
+        crops = {
+            1: np.zeros((20, 20, 3), dtype=np.uint8),  # too small
+            2: np.zeros((25, 25, 3), dtype=np.uint8),  # too small
+        }
+        result = cluster_teams_visual(crops, k=2)
+        assert result is None
+
+    def test_mixed_valid_and_small(self):
+        """Small crops skipped, valid ones still cluster."""
+        crops = {
+            1: _make_uniform_crop(255, 0, 0, seed=30),  # valid red
+            2: np.zeros((10, 10, 3), dtype=np.uint8),   # too small
+            3: _make_uniform_crop(0, 0, 255, seed=31),   # valid blue
+        }
+        result = cluster_teams_visual(crops, k=2)
+        assert result is not None
+        assert 2 not in result.assignments  # small crop excluded
+        assert len(result.assignments) == 2
+        assert result.assignments[1] != result.assignments[3]

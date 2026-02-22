@@ -167,6 +167,8 @@ export interface SubjectData {
   jersey_color?: string | null;
   jersey_crop_b64?: string;
   jersey_gemini_response?: string;
+  team_id?: number | null;
+  team_color?: string | null;
 }
 
 /** Gemini API usage statistics from backend. */
@@ -243,6 +245,9 @@ export interface SubjectState {
   jerseyColor: string | null;
   jerseyCropBase64: string | null;
   jerseyGeminiResponse: string | null;
+  /** Visual K-Means team clustering results. */
+  teamId: number | null;
+  teamColor: string | null;
   /** Cached analysis snapshots for replay on video loop, indexed by video_time. */
   replayTimeline: ReplaySnapshot[];
   /** Number of velocity samples recorded during first pass (used during replay). */
