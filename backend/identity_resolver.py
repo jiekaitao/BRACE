@@ -86,18 +86,19 @@ class IdentityResolver:
     def __init__(
         self,
         extractor: EmbeddingExtractor,
-        match_threshold: float = 0.40,
+        match_threshold: float = 0.45,
         confirm_threshold: float = 0.65,
-        gallery_size: int = 20,
-        extraction_interval: int = 2,
+        gallery_size: int = 40,
+        extraction_interval: int = 1,
         proportion_weight: float = 0.2,
-        spatial_iou_threshold: float = 0.1,
+        spatial_iou_threshold: float = 0.3,
         spatial_max_age: int = 90,
         cross_cut_extractor: EmbeddingExtractor | None = None,
         post_cut_frames: int = 5,
-        centroid_distance_threshold: float = 0.15,
+        centroid_distance_threshold: float = 0.08,
         centroid_max_age: int = 30,
         single_person_threshold: float = 0.30,
+        embedding_min_confidence: float = 0.5,
         vectorai_store=None,
         vectorai_person_threshold: float = 0.85,
     ):
@@ -116,6 +117,9 @@ class IdentityResolver:
 
         # Single-person bias threshold
         self._single_person_threshold = single_person_threshold
+
+        # Minimum detection confidence to add embedding to gallery
+        self._embedding_min_confidence = embedding_min_confidence
 
         # Optional CLIP-based extractor for cross-cut re-identification
         self._cross_cut_extractor = cross_cut_extractor
@@ -147,6 +151,10 @@ class IdentityResolver:
         # Session ID for VectorAI storage
         self._session_id = ""
 
+        # Temporal consistency: recent (subject_id → track_id) assignments
+        self._recent_assignments: dict[int, list[tuple[int, int]]] = {}
+        self._assignment_window = 10  # frames to look back
+
     def on_scene_cut(self) -> None:
         """Handle a detected scene cut.
 
@@ -160,6 +168,9 @@ class IdentityResolver:
 
         # All subjects become inactive (no active tracks after cut)
         self._active_subjects.clear()
+
+        # Clear temporal assignment history (track IDs reset after cut)
+        self._recent_assignments.clear()
 
         # Enable post-cut matching mode
         if self._cross_cut_extractor is not None:
@@ -220,14 +231,18 @@ class IdentityResolver:
             track_id = person.track_id
             emb = embeddings[i]
 
+            # Mean keypoint confidence as proxy for detection quality
+            kp_conf = float(np.mean(person.keypoints[:, 2]))
+
             if track_id in self._track_to_subject:
                 # Known track -> existing subject
                 subject_id = self._track_to_subject[track_id]
                 gallery = self._galleries[subject_id]
 
-                # Update gallery
+                # Update gallery (only if detection confidence is high enough)
                 if emb is not None and np.linalg.norm(emb) > 0:
-                    gallery.add_embedding(emb)
+                    if kp_conf >= self._embedding_min_confidence:
+                        gallery.add_embedding(emb)
 
                 # Update proportions
                 landmarks = coco_keypoints_to_landmarks(person.keypoints, w, h)
@@ -261,7 +276,8 @@ class IdentityResolver:
                     self._galleries[subject_id] = gallery
 
                     if emb is not None and np.linalg.norm(emb) > 0:
-                        gallery.add_embedding(emb)
+                        if kp_conf >= self._embedding_min_confidence:
+                            gallery.add_embedding(emb)
 
                     landmarks = coco_keypoints_to_landmarks(person.keypoints, w, h)
                     limbs = compute_limb_lengths(landmarks)
@@ -270,7 +286,8 @@ class IdentityResolver:
                 else:
                     gallery = self._galleries[subject_id]
                     if emb is not None and np.linalg.norm(emb) > 0:
-                        gallery.add_embedding(emb)
+                        if kp_conf >= self._embedding_min_confidence:
+                            gallery.add_embedding(emb)
                     landmarks = coco_keypoints_to_landmarks(person.keypoints, w, h)
                     limbs = compute_limb_lengths(landmarks)
                     if limbs is not None:
@@ -283,6 +300,9 @@ class IdentityResolver:
                 person.bbox_normalized, self._frame_count
             )
             current_active.add(subject_id)
+
+            # Record assignment for temporal consistency
+            self._record_assignment(subject_id, track_id, self._frame_count)
 
             resolved.append(ResolvedPerson(
                 person=person,
@@ -357,12 +377,16 @@ class IdentityResolver:
             emb = embeddings[i]
             landmarks = pr.landmarks_mp  # already MediaPipe (33, 4)
 
+            # Mean landmark visibility as proxy for detection quality
+            lm_conf = float(np.mean(landmarks[:, 3]))
+
             if track_id in self._track_to_subject:
                 subject_id = self._track_to_subject[track_id]
                 gallery = self._galleries[subject_id]
 
                 if emb is not None and np.linalg.norm(emb) > 0:
-                    gallery.add_embedding(emb)
+                    if lm_conf >= self._embedding_min_confidence:
+                        gallery.add_embedding(emb)
 
                 limbs = compute_limb_lengths(landmarks)
                 if limbs is not None:
@@ -375,7 +399,7 @@ class IdentityResolver:
                     subject_id = self._match_cross_cut(emb, landmarks, current_active)
                 else:
                     subject_id = self._match_to_existing_by_landmarks(
-                        emb, landmarks, pr.bbox_normalized, current_active
+                        emb, landmarks, pr.bbox_normalized, track_id, current_active
                     )
 
                 if subject_id is None:
@@ -412,7 +436,8 @@ class IdentityResolver:
                     self._galleries[subject_id] = gallery
 
                     if emb is not None and np.linalg.norm(emb) > 0:
-                        gallery.add_embedding(emb)
+                        if lm_conf >= self._embedding_min_confidence:
+                            gallery.add_embedding(emb)
 
                     limbs = compute_limb_lengths(landmarks)
                     if limbs is not None:
@@ -451,7 +476,8 @@ class IdentityResolver:
                 else:
                     gallery = self._galleries[subject_id]
                     if emb is not None and np.linalg.norm(emb) > 0:
-                        gallery.add_embedding(emb)
+                        if lm_conf >= self._embedding_min_confidence:
+                            gallery.add_embedding(emb)
                     limbs = compute_limb_lengths(landmarks)
                     if limbs is not None:
                         gallery.proportions.add(limbs)
@@ -465,6 +491,9 @@ class IdentityResolver:
 
             # Increment per-subject frame counter
             self._galleries[subject_id].total_frames += 1
+
+            # Record assignment for temporal consistency
+            self._record_assignment(subject_id, track_id, self._frame_count)
 
             resolved.append(ResolvedPipelineResult(
                 pipeline_result=pr,
@@ -521,9 +550,10 @@ class IdentityResolver:
         has_valid_emb = emb is not None and np.linalg.norm(emb) >= 1e-8
 
         # Single-person bias: if exactly one inactive gallery and one new track,
-        # use a lower threshold for strong re-match bias
+        # use a lower threshold for strong re-match bias.
+        # Only apply in small scenes (<=3 subjects) to avoid false matches in crowds.
         effective_threshold = self._match_threshold
-        if len(inactive_galleries) == 1 and has_valid_emb:
+        if len(inactive_galleries) == 1 and has_valid_emb and len(self._galleries) <= 3:
             effective_threshold = self._single_person_threshold
 
         if has_valid_emb:
@@ -551,6 +581,9 @@ class IdentityResolver:
                             prop_sim = float(np.dot(limbs, prop_vec) / (n1 * n2))
 
                 score = (1 - self._proportion_weight) * appearance_sim + self._proportion_weight * prop_sim
+
+                # Apply temporal consistency penalty
+                score -= self._get_switch_penalty(sid, person.track_id)
 
                 if score > best_score:
                     best_score = score
@@ -609,6 +642,7 @@ class IdentityResolver:
         emb: np.ndarray | None,
         landmarks: np.ndarray,
         bbox_normalized: tuple[float, float, float, float],
+        track_id: int = 0,
         current_active: set[int] | None = None,
     ) -> int | None:
         """Try to match a new track against inactive galleries using pre-computed landmarks.
@@ -628,9 +662,10 @@ class IdentityResolver:
         has_valid_emb = emb is not None and np.linalg.norm(emb) >= 1e-8
 
         # Single-person bias: if exactly one inactive gallery and one new track,
-        # use a lower threshold for strong re-match bias
+        # use a lower threshold for strong re-match bias.
+        # Only apply in small scenes (<=3 subjects) to avoid false matches in crowds.
         effective_threshold = self._match_threshold
-        if len(inactive_galleries) == 1 and has_valid_emb:
+        if len(inactive_galleries) == 1 and has_valid_emb and len(self._galleries) <= 3:
             effective_threshold = self._single_person_threshold
 
         if has_valid_emb:
@@ -655,6 +690,9 @@ class IdentityResolver:
                             prop_sim = float(np.dot(limbs, prop_vec) / (n1 * n2))
 
                 score = (1 - self._proportion_weight) * appearance_sim + self._proportion_weight * prop_sim
+
+                # Apply temporal consistency penalty
+                score -= self._get_switch_penalty(sid, track_id)
 
                 if score > best_score:
                     best_score = score
@@ -756,6 +794,39 @@ class IdentityResolver:
                 return best_id
 
         return None
+
+    def _get_switch_penalty(self, subject_id: int, track_id: int) -> float:
+        """Penalize if this subject was recently matched to a different track.
+
+        Returns a penalty value (0.0 or 0.1+) to subtract from the match score,
+        making it harder to switch a stable identity to a new track.
+        """
+        recent = self._recent_assignments.get(subject_id, [])
+        if not recent:
+            return 0.0
+        window = recent[-self._assignment_window:]
+        # Count how many recent assignments were to a different track
+        different_count = sum(1 for _, tid in window if tid != track_id)
+        # If less than 30% of recent assignments differ, the identity is stable
+        if different_count < len(window) * 0.3:
+            penalty = 0.1
+            # Double penalty for confirmed, long-lived subjects
+            gallery = self._galleries.get(subject_id)
+            if gallery and gallery.status == "confirmed" and gallery.total_frames > 30:
+                penalty *= 2.0
+            return penalty
+        return 0.0
+
+    def _record_assignment(self, subject_id: int, track_id: int, frame: int) -> None:
+        """Record a (subject_id -> track_id) assignment for temporal consistency."""
+        if subject_id not in self._recent_assignments:
+            self._recent_assignments[subject_id] = []
+        self._recent_assignments[subject_id].append((frame, track_id))
+        # Keep only recent window
+        self._recent_assignments[subject_id] = [
+            (f, t) for f, t in self._recent_assignments[subject_id]
+            if frame - f <= self._assignment_window
+        ]
 
     def _try_promote(self, gallery: _IdentityGallery) -> None:
         """Try to promote identity status based on gallery consistency."""

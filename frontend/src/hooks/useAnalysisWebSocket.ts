@@ -141,6 +141,7 @@ export function useAnalysisWebSocket(
   const selectedSubjectRef = useRef<number | null>(null);
   const highlightedClusterRef = useRef<number | null>(null);
   const equipmentRef = useRef<import("@/lib/types").EquipmentTracking | undefined>(undefined);
+  const userExplicitlySelectedRef = useRef(false);
 
   // Debug stats tracking
   const HISTORY_LEN = 60;
@@ -163,6 +164,7 @@ export function useAnalysisWebSocket(
 
   const selectSubject = useCallback((trackId: number) => {
     selectedSubjectRef.current = trackId;
+    userExplicitlySelectedRef.current = true;
     setSelectedSubjectId(trackId);
     // Immediately push selected subject's data to React state
     const subject = subjectsRef.current.get(trackId);
@@ -604,19 +606,36 @@ export function useAnalysisWebSocket(
           debugStatsRef.current.geminiStats = frame.gemini_stats;
         }
 
-        // Remove subjects not in active_track_ids
+        // Remove subjects not in active_track_ids (with grace period)
         const activeSet = new Set(frame.active_track_ids);
-        for (const existingId of currentSubjects.keys()) {
+        const SUBJECT_GRACE_MS = 1500;
+        for (const [existingId, state] of currentSubjects.entries()) {
           if (!activeSet.has(existingId)) {
-            currentSubjects.delete(existingId);
+            // Subject missing from this frame — check grace period
+            // lastSeenTime was set when subject last had data (line 444),
+            // so elapsed = now - lastSeenTime
+            if (now - state.lastSeenTime > SUBJECT_GRACE_MS) {
+              currentSubjects.delete(existingId);
+              // If the deleted subject was the user's explicit selection,
+              // reset the sticky flag so auto-select can pick a new one
+              if (existingId === selectedSubjectRef.current) {
+                userExplicitlySelectedRef.current = false;
+              }
+            }
+            // else: keep subject alive during grace period
           }
+          // Note: lastSeenTime is already updated on line 444 for active subjects
         }
 
-        // Auto-select first subject if none selected
-        if (
-          selectedSubjectRef.current === null ||
-          !currentSubjects.has(selectedSubjectRef.current)
-        ) {
+        // Auto-select subject:
+        // - If no selection yet (initial state), auto-select first subject
+        // - If user explicitly selected, keep that selection even if subject
+        //   temporarily disappears (grace period handles cleanup)
+        // - If selected subject was deleted (past grace period), auto-select
+        const selectedGone = selectedSubjectRef.current !== null &&
+          !currentSubjects.has(selectedSubjectRef.current);
+        if (selectedSubjectRef.current === null ||
+            (selectedGone && !userExplicitlySelectedRef.current)) {
           if (subjectIds.length > 0) {
             const firstId = subjectIds[0];
             selectedSubjectRef.current = firstId;
@@ -627,7 +646,9 @@ export function useAnalysisWebSocket(
         // Throttle React state updates to ~4/sec
         const uiNow = performance.now();
         if (uiNow - lastUiUpdateRef.current > 250) {
-          setActiveTrackIds(frame.active_track_ids);
+          // Include all subjects still in the map (active + grace period)
+          // so sidebar buttons don't flicker when subjects briefly occlude
+          setActiveTrackIds(Array.from(currentSubjects.keys()));
 
           // Push selected subject's data to React state
           const selected = selectedSubjectRef.current;
@@ -658,6 +679,7 @@ export function useAnalysisWebSocket(
           retryDelay = 1000;
           subjectsRef.current.clear();
           selectedSubjectRef.current = null;
+          userExplicitlySelectedRef.current = false;
           lastAppliedFrameRef.current = -1;
           framesInFlightRef.current = 0;
           replayingRef.current = false;
@@ -701,6 +723,7 @@ export function useAnalysisWebSocket(
             retryDelay = 1000;
             subjectsRef.current.clear();
             selectedSubjectRef.current = null;
+            userExplicitlySelectedRef.current = false;
             lastAppliedFrameRef.current = -1;
             framesInFlightRef.current = 0;
             replayingRef.current = false;

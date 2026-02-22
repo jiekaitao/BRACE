@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from streaming_analyzer import StreamingAnalyzer
+
+logger = logging.getLogger(__name__)
 
 
 class SubjectManager:
@@ -20,12 +23,20 @@ class SubjectManager:
         self._next_label_idx = 1
         self._loop_detected: bool = False  # when True, new analyzers start frozen
 
+        # Per-subject stability tracking
+        self._subject_track_history: dict[int, list[int]] = {}  # subject_id -> recent track_ids
+        self._last_seen_frame: dict[int, int] = {}  # subject_id -> last frame seen
+        self._track_change_count: dict[int, int] = {}  # subject_id -> track changes in window
+
     def reset(self) -> None:
         """Reset all state for a new session/video loop."""
         self.analyzers.clear()
         self._track_to_label.clear()
         self._next_label_idx = 1
         self._loop_detected = False
+        self._subject_track_history.clear()
+        self._last_seen_frame.clear()
+        self._track_change_count.clear()
 
     def get_or_create_analyzer(self, track_id: int) -> StreamingAnalyzer:
         """Get existing analyzer or create new one for a track_id."""
@@ -40,6 +51,55 @@ class SubjectManager:
             self._track_to_label[track_id] = f"S{self._next_label_idx}"
             self._next_label_idx += 1
         return self.analyzers[track_id]
+
+    def record_subject_track(self, subject_id: int, track_id: int, frame_idx: int) -> None:
+        """Record a subject's track_id for stability tracking.
+
+        Logs warnings when a subject's track_id changes frequently, which
+        indicates identity instability.
+        """
+        self._last_seen_frame[subject_id] = frame_idx
+
+        history = self._subject_track_history.setdefault(subject_id, [])
+        if not history or history[-1] != track_id:
+            if history:
+                logger.warning(
+                    "Subject %d track changed: %d -> %d (frame %d)",
+                    subject_id, history[-1], track_id, frame_idx,
+                )
+                self._track_change_count[subject_id] = self._track_change_count.get(subject_id, 0) + 1
+            history.append(track_id)
+            # Keep only last 30 entries
+            if len(history) > 30:
+                history[:] = history[-30:]
+
+        # Warn if unstable (>3 changes in recent history)
+        changes = self._track_change_count.get(subject_id, 0)
+        if changes > 3 and changes % 5 == 0:
+            logger.warning(
+                "Subject %d is UNSTABLE: %d track changes so far",
+                subject_id, changes,
+            )
+
+    def merge_short_lived_analyzer(self, keep_id: int, merge_id: int, max_frames: int = 30) -> bool:
+        """Merge a short-lived analyzer into the correct one.
+
+        If merge_id's analyzer has fewer than max_frames, discard its data
+        (it was likely an incorrect brief re-ID). Returns True if merged.
+        """
+        if merge_id not in self.analyzers or keep_id not in self.analyzers:
+            return False
+        if self.analyzers[merge_id].frame_count < max_frames:
+            logger.info(
+                "Discarding short-lived analyzer for subject %d (%d frames) in favor of %d",
+                merge_id, self.analyzers[merge_id].frame_count, keep_id,
+            )
+            del self.analyzers[merge_id]
+            self._last_seen_frame.pop(merge_id, None)
+            self._subject_track_history.pop(merge_id, None)
+            self._track_change_count.pop(merge_id, None)
+            return True
+        return False
 
     def note_loop(self) -> None:
         """Mark that a video loop was detected.
@@ -68,6 +128,9 @@ class SubjectManager:
                 stale.append(track_id)
         for track_id in stale:
             del self.analyzers[track_id]
+            self._last_seen_frame.pop(track_id, None)
+            self._subject_track_history.pop(track_id, None)
+            self._track_change_count.pop(track_id, None)
             # Keep label mapping so re-appearing IDs don't reuse labels
         return stale
 
@@ -80,6 +143,9 @@ class SubjectManager:
             return
         self.analyzers[target_id].absorb(self.analyzers[source_id])
         del self.analyzers[source_id]
+        self._last_seen_frame.pop(source_id, None)
+        self._subject_track_history.pop(source_id, None)
+        self._track_change_count.pop(source_id, None)
 
     def merge_subject(self, from_id: int, to_id: int) -> None:
         """Merge one subject into another by absorbing analyzers.
@@ -95,10 +161,26 @@ class SubjectManager:
             return
         self.analyzers[to_id].absorb(self.analyzers[from_id])
         del self.analyzers[from_id]
+        self._last_seen_frame.pop(from_id, None)
+        self._subject_track_history.pop(from_id, None)
+        self._track_change_count.pop(from_id, None)
 
-    def get_active_track_ids(self) -> list[int]:
-        """Return list of currently active track IDs."""
-        return list(self.analyzers.keys())
+    def get_active_track_ids(self, current_frame: int = -1, hysteresis_frames: int = 45) -> list[int]:
+        """Return list of active track IDs, including recently-seen subjects.
+
+        When current_frame is provided, subjects seen within hysteresis_frames
+        (~1.5s at 30fps) are included even if not in the current frame.
+        This prevents the frontend from deleting subjects during brief occlusions.
+        """
+        if current_frame < 0:
+            return list(self.analyzers.keys())
+
+        ids = set()
+        for sid in self.analyzers:
+            last = self._last_seen_frame.get(sid, 0)
+            if current_frame - last <= hysteresis_frames:
+                ids.add(sid)
+        return list(ids)
 
     def get_all_analyzers(self) -> list[StreamingAnalyzer]:
         """Return all active StreamingAnalyzer instances."""

@@ -1669,6 +1669,7 @@ async def _handle_webcam_mode(
                 analyzer.last_seen_frame = frame_idx
                 analyzer._session_id = session_id
                 analyzer._person_id = label
+                manager.record_subject_track(subject_id, pr.track_id, frame_idx)
 
                 # Process through analyzer (pixel coordinates for SRP)
                 response = analyzer.process_frame(landmarks_xyzv, img_wh=(w, h))
@@ -1910,7 +1911,9 @@ async def _handle_webcam_mode(
             t_analyze = time.monotonic()
 
             # Send combined multi-subject response with timing
-            active_ids = manager.get_active_track_ids()
+            # Pass current frame so recently-seen subjects (within ~1.5s)
+            # stay in active_track_ids even if not in this frame
+            active_ids = manager.get_active_track_ids(current_frame=frame_idx)
             timing_dict = {
                 "decode_ms": round(t_decode * 1000, 1),
                 "pipeline_ms": round((t_infer - t0) * 1000, 1),
