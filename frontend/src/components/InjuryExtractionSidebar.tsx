@@ -1,18 +1,15 @@
 "use client";
 
-import type { InjuryEntry, InjuryProfile } from "@/lib/types";
+import type { InjuryProfile } from "@/lib/types";
 import { InjuryBadge } from "@/components/InjuryProfileCard";
 import { INJURY_METRIC_MAP } from "@/hooks/useChat";
 
 interface Props {
-  partialInjuries: InjuryEntry[];
   extractedProfile: InjuryProfile | null;
 }
 
-export default function InjuryExtractionSidebar({ partialInjuries, extractedProfile }: Props) {
-  // Use real extracted profile if available, otherwise partial
-  const injuries = extractedProfile?.injuries ?? partialInjuries;
-  const isPartial = !extractedProfile;
+export default function InjuryExtractionSidebar({ extractedProfile }: Props) {
+  const injuries = extractedProfile?.injuries ?? [];
 
   return (
     <div className="flex flex-col h-full">
@@ -33,18 +30,12 @@ export default function InjuryExtractionSidebar({ partialInjuries, extractedProf
               <InjuryBadge injury={injury} />
               {INJURY_METRIC_MAP[injury.type] && (
                 <div className="text-[10px] text-[#CE82FF] font-bold mt-0.5 ml-5">
-                  BRACE → {INJURY_METRIC_MAP[injury.type]}
+                  BRACE &rarr; {INJURY_METRIC_MAP[injury.type]}
                 </div>
               )}
             </div>
           ))}
         </div>
-      )}
-
-      {isPartial && injuries.length > 0 && (
-        <p className="text-[10px] text-[#AFAFAF] mt-2 italic">
-          Keep chatting for more detail...
-        </p>
       )}
 
       {extractedProfile && (

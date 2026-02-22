@@ -48,7 +48,6 @@ function OnboardingContent() {
     loading: chatLoading,
     error: chatError,
     extractedProfile,
-    partialInjuries,
     profileComplete,
     sendMessage,
     confirmProfile,
@@ -221,7 +220,6 @@ function OnboardingContent() {
                 style={{ height: 450 }}
               >
                 <InjuryExtractionSidebar
-                  partialInjuries={partialInjuries}
                   extractedProfile={extractedProfile}
                 />
               </div>
@@ -230,19 +228,12 @@ function OnboardingContent() {
               <DuoButton variant="secondary" onClick={back}>
                 Back
               </DuoButton>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleSkipChat}
-                  className="text-sm text-[#AFAFAF] hover:text-[#777777] transition-colors px-4 py-2"
-                >
-                  Skip
-                </button>
-                {(extractedProfile || profileComplete) && (
-                  <DuoButton variant="primary" onClick={next}>
-                    Continue
-                  </DuoButton>
-                )}
-              </div>
+              <DuoButton
+                variant={(extractedProfile || profileComplete) ? "primary" : "secondary"}
+                onClick={(extractedProfile || profileComplete) ? next : handleSkipChat}
+              >
+                Continue
+              </DuoButton>
             </div>
           </div>
         )}
@@ -269,8 +260,8 @@ function OnboardingContent() {
                 Back
               </DuoButton>
               {!extractedProfile && (
-                <DuoButton variant="primary" onClick={next}>
-                  Skip
+                <DuoButton variant="secondary" onClick={next}>
+                  Continue
                 </DuoButton>
               )}
             </div>

@@ -127,7 +127,7 @@ export default function ResearchStep({ injuryProfile, userId, onContinue }: Prop
       <div className="text-center py-8">
         <p className="text-sm text-[#EA2B2B] mb-4">{error}</p>
         <DuoButton variant="primary" onClick={onContinue}>
-          Skip & Continue
+          Continue
         </DuoButton>
       </div>
     );

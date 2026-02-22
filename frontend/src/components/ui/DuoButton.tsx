@@ -8,7 +8,7 @@ const variantStyles: Record<Variant, string> = {
   primary:
     "bg-[#58CC02] text-white shadow-[0_4px_0_#46A302] hover:brightness-105 active:shadow-none active:translate-y-[4px]",
   secondary:
-    "bg-white text-[#4B4B4B] border-2 border-[#E5E5E5] shadow-[0_4px_0_#E5E5E5] hover:bg-[#F7F7F7] active:shadow-none active:translate-y-[4px] active:border-[#CDCDCD]",
+    "bg-[#FF4B4B] text-white shadow-[0_4px_0_#CC3636] hover:brightness-105 active:shadow-none active:translate-y-[4px]",
   danger:
     "bg-[#EA2B2B] text-white shadow-[0_4px_0_#CC2424] hover:brightness-105 active:shadow-none active:translate-y-[4px]",
   blue:
