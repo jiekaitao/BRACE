@@ -106,7 +106,7 @@ export default function HomePage() {
         {/* Path Cards - always in DOM */}
         <div
           className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full mb-4 fade-up"
-          style={{ animationDelay: "1.1s" }}
+          style={{ animationDelay: "0.55s" }}
         >
           <PathCard
             title="Personal Workout Safety"
@@ -133,7 +133,7 @@ export default function HomePage() {
         {/* Quick access CTAs */}
         <div
           className="flex flex-col sm:flex-row gap-3 w-full fade-up"
-          style={{ animationDelay: "1.3s" }}
+          style={{ animationDelay: "0.65s" }}
         >
           <Link href="/analyze?mode=upload" className="flex-1 no-underline">
             <DuoButton variant="primary" fullWidth>
@@ -146,7 +146,7 @@ export default function HomePage() {
             </DuoButton>
           </Link>
           <Link href="/dev/streams" className="flex-1 no-underline">
-            <DuoButton variant="secondary" fullWidth>
+            <DuoButton variant="danger" fullWidth>
               Debug Streams
             </DuoButton>
           </Link>
@@ -155,7 +155,7 @@ export default function HomePage() {
         {/* Tech stack link */}
         <div
           className="w-full fade-up mt-3"
-          style={{ animationDelay: "1.5s" }}
+          style={{ animationDelay: "0.75s" }}
         >
           <Link href="/stack" className="no-underline">
             <DuoButton variant="secondary" fullWidth>
