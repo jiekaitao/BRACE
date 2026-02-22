@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import type { SubjectState, BBox, EquipmentTracking } from "@/lib/types";
 import { MP_BONES, FEATURE_INDICES, RISK_JOINT_TO_MP } from "@/lib/skeleton";
-import { PHASE_COLORS, SKELETON_COLOR, JOINT_DOT_COLOR, riskColor, getSubjectColor } from "@/lib/colors";
+import { PHASE_COLORS, SKELETON_COLOR, JOINT_DOT_COLOR, riskColor, getSubjectColor, jerseyTagText } from "@/lib/colors";
 
 interface AnalysisCanvasProps {
   subjectsRef: React.MutableRefObject<Map<number, SubjectState>>;
@@ -135,16 +135,18 @@ export default function AnalysisCanvas({
           const labelY = toY(labelPos.y);
 
           const isUnknown = subject.identityStatus === "unknown";
+          const jerseyTag = jerseyTagText(subject.jerseyNumber, subject.jerseyColor);
+          const chipLabel = jerseyTag ? `${subject.label} / ${jerseyTag}` : subject.label;
           ctx.globalAlpha = isUnknown ? 0.3 : 0.5;
           ctx.fillStyle = subjectColor;
           ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, sans-serif";
-          const tm = ctx.measureText(subject.label);
+          const tm = ctx.measureText(chipLabel);
           const chipW = tm.width + 8;
           ctx.beginPath();
           ctx.roundRect(labelX - chipW / 2, labelY - 18, chipW, 16, 4);
           ctx.fill();
           ctx.fillStyle = "#FFF";
-          ctx.fillText(subject.label, labelX - chipW / 2 + 4, labelY - 5);
+          ctx.fillText(chipLabel, labelX - chipW / 2 + 4, labelY - 5);
           ctx.globalAlpha = 1.0;
           continue;
         }
@@ -235,7 +237,8 @@ export default function AnalysisCanvas({
           ctx.stroke();
 
           // Subject label - Minecraft-style step-function position
-          const labelText = subject.label;
+          const selJerseyTag = jerseyTagText(subject.jerseyNumber, subject.jerseyColor);
+          const labelText = selJerseyTag ? `${subject.label} / ${selJerseyTag}` : subject.label;
           ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, sans-serif";
           const tm = ctx.measureText(labelText);
           const labelW = tm.width + 10;

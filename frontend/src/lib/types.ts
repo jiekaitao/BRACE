@@ -163,6 +163,10 @@ export interface SubjectData {
   fatigue_index?: number;
   peak_velocity?: number;
   quality?: FrameQuality;
+  jersey_number?: number | null;
+  jersey_color?: string | null;
+  jersey_crop_b64?: string;
+  jersey_gemini_response?: string;
 }
 
 /** Gemini API usage statistics from backend. */
@@ -234,6 +238,11 @@ export interface SubjectState {
   clusterRepresentatives: Record<string, ([number, number] | [number, number, number])[][]>;
   /** Per-frame movement quality metrics. */
   quality: FrameQuality;
+  /** Jersey detection results. */
+  jerseyNumber: number | null;
+  jerseyColor: string | null;
+  jerseyCropBase64: string | null;
+  jerseyGeminiResponse: string | null;
   /** Cached analysis snapshots for replay on video loop, indexed by video_time. */
   replayTimeline: ReplaySnapshot[];
   /** Number of velocity samples recorded during first pass (used during replay). */

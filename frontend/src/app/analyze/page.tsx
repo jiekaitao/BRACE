@@ -19,6 +19,7 @@ import DebugPanel from "@/components/DebugPanel";
 import DelayedVideoCanvas from "@/components/DelayedVideoCanvas";
 import MovementQualityPanel from "@/components/MovementQualityPanel";
 import RiskSummaryCard from "@/components/RiskSummaryCard";
+import JerseyDebugPanel from "@/components/JerseyDebugPanel";
 import WorkoutTimeline from "@/components/WorkoutTimeline";
 
 function VideoControls({ videoRef, replaying }: { videoRef: React.RefObject<HTMLVideoElement | null>; replaying: boolean }) {
@@ -407,6 +408,7 @@ function AnalyzeContent() {
                 highlightedClusterRef={highlightedClusterRef}
                 nSegments={nSegments}
                 nClusters={nClusters}
+                showJerseyColors={showDebug}
               />
               <SkeletonGraph
                 subjectsRef={subjectsRef}
@@ -468,6 +470,12 @@ function AnalyzeContent() {
               selectedSubjectRef={selectedSubjectRef}
               videoRef={demoVideoUrl ? demoVideoRef : videoPlaybackRef}
               replaying={replaying}
+            />
+          )}
+          {active && showDebug && (
+            <JerseyDebugPanel
+              subjectsRef={subjectsRef}
+              selectedSubjectRef={selectedSubjectRef}
             />
           )}
         </div>

@@ -812,8 +812,9 @@ class MovementQualityTracker:
         self._head_prev_ear_angle: float | None = None  # ear-to-ear angle (rad)
         self._head_vel_baseline_ema: float = 0.0  # adaptive baseline of head speed
         self._head_vel_baseline_initialized: bool = False
-        self._head_linear_accel_g: float = 0.0  # current head acceleration (g)
+        self._head_linear_accel_g: float = 0.0  # current head acceleration (g, display only)
         self._head_angular_vel: float = 0.0  # current head angular velocity (rad/s)
+        self._head_angular_vel_ema: float = 0.0  # EMA-smoothed angular velocity
         self._head_spike_z: float = 0.0  # z-score of current head speed vs baseline
         self._concussion_peak_value: float = 0.0  # peak-hold value
         self._concussion_peak_hold_frames: int = 0  # frames remaining in hold
@@ -1098,8 +1099,18 @@ class MovementQualityTracker:
     ) -> None:
         """Compute concussion risk from head-specific kinematics.
 
-        Uses nose position for linear acceleration and ear-to-ear angle for
-        angular velocity.  Score is peak-held then decayed so it doesn't flicker.
+        Scoring uses head **velocity** (not acceleration) as the primary signal.
+        Acceleration requires double-differentiating noisy pixel positions at
+        30fps, which amplifies detection jitter into phantom 10-30g readings
+        that swamp real thresholds.  Velocity (single differentiation) is far
+        more stable and still discriminates normal motion from impacts.
+
+        Components:
+          - Head speed (m/s) with dead zone at 5 m/s  →  0-40 pts
+          - EMA-smoothed angular velocity (rad/s) at 12 rad/s  →  0-35 pts
+          - Velocity z-score spike at z > 5  →  0-25 pts
+
+        Peak-hold + exponential decay prevents flickering.
 
         Args:
             head_landmarks: (3, 2) hip-centered [nose, left_ear, right_ear] in pixels,
@@ -1140,7 +1151,7 @@ class MovementQualityTracker:
 
         head_speed = float(np.linalg.norm(head_vel))
 
-        # --- Head linear acceleration (g) ---
+        # --- Head linear acceleration (g) — stored for display, NOT used in scoring ---
         if self._head_prev_vel is not None:
             accel_vec = (head_vel - self._head_prev_vel) / dt
             accel_g = float(np.linalg.norm(accel_vec)) / 9.81
@@ -1162,10 +1173,17 @@ class MovementQualityTracker:
         self._head_prev_ear_angle = ear_angle
         self._head_angular_vel = angular_vel
 
+        # EMA-smooth angular velocity to reject single-frame ear-detection jitter
+        _ANGULAR_EMA_ALPHA = 0.3
+        self._head_angular_vel_ema = (
+            _ANGULAR_EMA_ALPHA * angular_vel
+            + (1 - _ANGULAR_EMA_ALPHA) * self._head_angular_vel_ema
+        )
+
         # --- Adaptive baseline (EMA of head speed) ---
-        # α=0.02: adapts in ~50 frames (1.7s) so normal athletic motion
-        # raises the baseline quickly, preventing false spike z-scores.
-        _BASELINE_ALPHA = 0.02
+        # α=0.05: adapts in ~20 frames (0.7s) so normal athletic motion
+        # quickly raises the baseline, keeping z-scores low during play.
+        _BASELINE_ALPHA = 0.05
         if not self._head_vel_baseline_initialized:
             self._head_vel_baseline_ema = head_speed
             self._head_vel_baseline_initialized = True
@@ -1180,30 +1198,36 @@ class MovementQualityTracker:
         z_score = (head_speed - baseline) / baseline
         self._head_spike_z = max(z_score, 0.0)
 
-        # --- Composite score (0–100) with dead zones ---
-        # Dead zones: normal athletic motion (running, jumping, head turns)
-        # doesn't score.  Only motion above these floors contributes.
+        # --- Composite score (0–100) ---
         #
-        # Video-based 2D estimation at 30fps amplifies noise through
-        # double-differentiation, so floors are set above typical
-        # basketball values (5-8g accel, 8-12 rad/s angular).
-        _ACCEL_FLOOR_G = 5.0       # below 5g = normal athletic motion
-        _ACCEL_RANGE_G = 45.0      # 5g → 50g maps to 0 → 40 pts
-        _ANGULAR_FLOOR_RPS = 10.0  # below 10 rad/s = normal head turns
-        _ANGULAR_RANGE_RPS = 20.0  # 10 → 30 rad/s maps to 0 → 35 pts
-        _SPIKE_FLOOR_Z = 3.0       # z-score below 3 = normal variation
-        _SPIKE_RANGE_Z = 7.0       # z 3 → 10 maps to 0 → 25 pts
+        # Velocity-based scoring.  Acceleration is NOT used because
+        # double-differentiation of 30fps pixel positions amplifies
+        # detection noise into phantom 10-30g spikes during normal play.
+        #
+        # Typical basketball head speeds:
+        #   Running/jumping: 1-3 m/s,  head turns: 5-10 rad/s
+        # Concussive-level:
+        #   Impact whiplash: 8-15+ m/s, angular: 20-35+ rad/s
 
-        accel_excess = max(accel_g - _ACCEL_FLOOR_G, 0.0)
-        accel_component = min(accel_excess / _ACCEL_RANGE_G, 1.0) * 40.0
+        # Velocity component (40 pts max)
+        _VEL_FLOOR_MPS = 5.0     # below 5 m/s = normal athletic motion
+        _VEL_RANGE_MPS = 10.0    # 5 → 15 m/s maps to 0 → 40 pts
+        vel_excess = max(head_speed - _VEL_FLOOR_MPS, 0.0)
+        vel_component = min(vel_excess / _VEL_RANGE_MPS, 1.0) * 40.0
 
-        angular_excess = max(angular_vel - _ANGULAR_FLOOR_RPS, 0.0)
-        angular_component = min(angular_excess / _ANGULAR_RANGE_RPS, 1.0) * 35.0
+        # Angular velocity component (35 pts max) — uses EMA-smoothed value
+        _ANGULAR_FLOOR_RPS = 12.0  # below 12 rad/s = normal head turns + noise
+        _ANGULAR_RANGE_RPS = 23.0  # 12 → 35 rad/s maps to 0 → 35 pts
+        ang_excess = max(self._head_angular_vel_ema - _ANGULAR_FLOOR_RPS, 0.0)
+        angular_component = min(ang_excess / _ANGULAR_RANGE_RPS, 1.0) * 35.0
 
+        # Spike z-score component (25 pts max)
+        _SPIKE_FLOOR_Z = 5.0     # z below 5 = within normal variation
+        _SPIKE_RANGE_Z = 10.0    # z 5 → 15 maps to 0 → 25 pts
         spike_excess = max(self._head_spike_z - _SPIKE_FLOOR_Z, 0.0)
         spike_component = min(spike_excess / _SPIKE_RANGE_Z, 1.0) * 25.0
 
-        raw_score = accel_component + angular_component + spike_component
+        raw_score = vel_component + angular_component + spike_component
 
         # --- Peak hold + decay ---
         if raw_score > self._concussion_peak_value:
@@ -1602,6 +1626,7 @@ class MovementQualityTracker:
         self._head_vel_baseline_initialized = False
         self._head_linear_accel_g = 0.0
         self._head_angular_vel = 0.0
+        self._head_angular_vel_ema = 0.0
         self._head_spike_z = 0.0
         self._concussion_peak_value = 0.0
         self._concussion_peak_hold_frames = 0
