@@ -23,16 +23,16 @@ public class InfoPanel : MonoBehaviour
     [SerializeField] private float rightOffset = 0f;
 
     [Tooltip("TMP font size for title")]
-    [SerializeField] private float titleFontSize = 56f;
+    [SerializeField] private float titleFontSize = 80f;
 
     [Tooltip("TMP font size for body text")]
-    [SerializeField] private float bodyFontSize = 44f;
+    [SerializeField] private float bodyFontSize = 64f;
 
     [Tooltip("World scale of the canvas")]
-    [SerializeField] private float canvasWorldScale = 0.0018f;
+    [SerializeField] private float canvasWorldScale = 0.004f;
 
     [Tooltip("Panel size in canvas units")]
-    [SerializeField] private Vector2 panelSize = new Vector2(650, 500);
+    [SerializeField] private Vector2 panelSize = new Vector2(1100, 900);
 
     [Tooltip("Panel background alpha (0..1)")]
     [Range(0f, 1f)]
@@ -78,12 +78,11 @@ public class InfoPanel : MonoBehaviour
         if (_canvas == null || _cameraAnchor == null) return;
         if (_selectedSubjectId == null) return;
 
-        // Reposition: below eye level, offset right (side-by-side with DebugHUD on left)
+        // Reposition: below eye level, centered
         Vector3 forward = _cameraAnchor.forward;
         Vector3 down = -_cameraAnchor.up * downOffset;
-        Vector3 right = _cameraAnchor.right * rightOffset;
 
-        _canvas.transform.position = _cameraAnchor.position + forward * hudDistance + down + right;
+        _canvas.transform.position = _cameraAnchor.position + forward * hudDistance + down;
 
         // Face the camera (billboard)
         _canvas.transform.rotation = Quaternion.LookRotation(
