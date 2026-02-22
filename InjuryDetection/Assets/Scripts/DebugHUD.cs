@@ -60,10 +60,20 @@ public class DebugHUD : MonoBehaviour
             _cameraAnchor = Camera.main != null ? Camera.main.transform : transform;
 
         CreateHUD();
+        // Start hidden — press A on right controller to toggle
+        _canvas.gameObject.SetActive(false);
     }
 
     void Update()
     {
+        // Toggle debug panel with A button on right controller
+        if (OVRInput.GetDown(OVRInput.Button.One, OVRInput.Controller.RTouch))
+        {
+            showHUD = !showHUD;
+            if (_canvas != null)
+                _canvas.gameObject.SetActive(showHUD);
+        }
+
         if (!showHUD || _text == null || _cameraAnchor == null) return;
 
         // Update content at 4Hz
