@@ -63,8 +63,8 @@ public class InfoPanel : MonoBehaviour
             _cameraAnchor = Camera.main != null ? Camera.main.transform : transform;
 
         // Force panel sizing values at runtime (overrides any stale serialized values in scene)
-        titleFontSize = 60f;
-        bodyFontSize = 48f;
+        titleFontSize = 72f;
+        bodyFontSize = 56f;
         canvasWorldScale = 0.0016f;
         panelSize = new Vector2(1000, 1600);
 
