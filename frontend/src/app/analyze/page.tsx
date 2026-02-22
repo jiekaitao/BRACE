@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useAnalysisWebSocket } from "@/hooks/useAnalysisWebSocket";
+import { usePrecomputedReplay } from "@/hooks/usePrecomputedReplay";
 import { getApiBase } from "@/lib/api";
 import CameraFeed from "@/components/CameraFeed";
 import VideoUploader from "@/components/VideoUploader";
@@ -94,8 +95,10 @@ function AnalyzeContent() {
   const searchParams = useSearchParams();
   const paramMode = searchParams.get("mode");
   const paramVideo = searchParams.get("video");
+  const paramJobId = searchParams.get("job_id");
   const { user } = useAuth();
 
+  const isPrecomputedMode = paramMode === "precomputed" && !!paramVideo && !!paramJobId;
   const initialMode = paramMode === "upload" ? "video" : "webcam";
 
   // Build demo URL only on the client to avoid SSR hydration mismatch
@@ -103,9 +106,9 @@ function AnalyzeContent() {
   const isDemoMode = paramMode === "demo" && !!paramVideo;
 
   const [mode, setMode] = useState<"webcam" | "video">(
-    paramMode === "demo" ? "webcam" : initialMode === "video" ? "video" : "webcam"
+    paramMode === "demo" || paramMode === "precomputed" ? "webcam" : initialMode === "video" ? "video" : "webcam"
   );
-  const [active, setActive] = useState(mode === "webcam" || isDemoMode);
+  const [active, setActive] = useState(mode === "webcam" || isDemoMode || isPrecomputedMode);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [showDemoModal, setShowDemoModal] = useState(false);
@@ -116,7 +119,7 @@ function AnalyzeContent() {
 
   // Set demo URL on client mount (avoids SSR hydration mismatch)
   useEffect(() => {
-    if (paramMode === "demo" && paramVideo) {
+    if ((paramMode === "demo" || paramMode === "precomputed") && paramVideo) {
       setDemoVideoUrl(`${getApiBase()}/api/demo-videos/${encodeURIComponent(paramVideo)}?v=${Date.now()}`);
     }
   }, [paramMode, paramVideo]);
@@ -124,6 +127,16 @@ function AnalyzeContent() {
   // Demo mode uses "webcam" WebSocket mode (frame-by-frame streaming)
   const wsMode = demoVideoUrl ? "webcam" : mode;
 
+  // Precomputed replay hook (only active in precomputed mode)
+  const precomputed = usePrecomputedReplay(
+    isPrecomputedMode ? paramJobId : null,
+    isPrecomputedMode ? paramVideo : null,
+  );
+
+  // Standard WebSocket hook (active in all other modes)
+  const wsHook = useAnalysisWebSocket(active && !isPrecomputedMode, wsMode);
+
+  // Use precomputed hook when in precomputed mode, otherwise WebSocket hook
   const {
     connected,
     replaying,
@@ -152,7 +165,7 @@ function AnalyzeContent() {
     proximityRef,
     collisionWarning,
     closingSpeed,
-  } = useAnalysisWebSocket(active, wsMode);
+  } = isPrecomputedMode ? precomputed : wsHook;
 
   const {
     exportStatus,
@@ -320,22 +333,29 @@ function AnalyzeContent() {
 
               {/* Demo video playback — delayed canvas covers the video element,
                   showing frames offset by pipeline RTT so skeleton aligns.
-                  Video stays visible (not opacity:0) so Chrome autoplay works. */}
+                  Video stays visible (not opacity:0) so Chrome autoplay works.
+                  In precomputed mode, skip DelayedVideoCanvas — skeleton is perfectly synced. */}
               {isDemo && active && (
                 <>
                   <video
-                    ref={demoVideoRefCallback}
+                    ref={isPrecomputedMode ? (el: HTMLVideoElement | null) => {
+                      demoVideoRef.current = el;
+                      if (el) startCapture(el);
+                    } : demoVideoRefCallback}
                     src={demoVideoUrl}
                     className="w-full h-full object-contain"
                     playsInline
                     muted
                     loop
-                    onCanPlay={onDemoVideoReady}
+                    autoPlay={isPrecomputedMode}
+                    onCanPlay={isPrecomputedMode ? undefined : onDemoVideoReady}
                   />
-                  <DelayedVideoCanvas
-                    videoRef={demoVideoRef}
-                    debugStatsRef={debugStatsRef}
-                  />
+                  {!isPrecomputedMode && (
+                    <DelayedVideoCanvas
+                      videoRef={demoVideoRef}
+                      debugStatsRef={debugStatsRef}
+                    />
+                  )}
                   <VideoControls videoRef={demoVideoRef} replaying={replaying} />
                 </>
               )}

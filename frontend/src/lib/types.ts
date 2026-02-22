@@ -540,3 +540,48 @@ export interface VectorEntriesResponse {
   entries: VectorEntry[];
   error?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Crash Analysis Types
+// ---------------------------------------------------------------------------
+
+/** A single collision event detected during crash analysis. */
+export interface CrashCollisionEvent {
+  event_id: string;
+  frame_index: number;
+  video_time: number;
+  subject_a: number;
+  subject_b: number;
+  closing_speed_ms: number;
+  peak_linear_g: number;
+  peak_rotational_rads2: number;
+  concussion_probability: number;
+  risk_level: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+  recommendation: string;
+  contact_zone: string;
+  head_coupling_factor: number;
+  hic: number;
+}
+
+/** Per-subject crash summary. */
+export interface SubjectCrashSummary {
+  subject_id: number;
+  collision_count: number;
+  max_concussion_probability: number;
+  worst_risk_level: string;
+  recommendation: string;
+}
+
+/** Complete crash analysis result from the backend. */
+export interface CrashAnalysisResult {
+  analysis_id: string;
+  status: string;
+  total_frames: number;
+  duration_sec: number;
+  fps: number;
+  subjects_tracked: number;
+  collision_events: CrashCollisionEvent[];
+  subject_summaries: Record<string, SubjectCrashSummary>;
+  overall_risk: string;
+  overall_recommendation: string;
+}

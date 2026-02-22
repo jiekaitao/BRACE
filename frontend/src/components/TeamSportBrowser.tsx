@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { SPORTS } from "@/lib/teamSportsData";
+import { getApiBase } from "@/lib/api";
 
 const SPORT_ICONS: Record<string, React.ReactNode> = {
   basketball: (
@@ -110,21 +111,222 @@ const SPORT_ICONS: Record<string, React.ReactNode> = {
   ),
 };
 
+const LONG_PRESS_MS = 600;
+
 interface TeamSportBrowserProps {
   onClose: () => void;
   showContent: boolean;
 }
 
+/** Circular progress ring for the precompute loading overlay. */
+function ProgressRing({ progress, size = 120 }: { progress: number; size?: number }) {
+  const stroke = 6;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference * (1 - Math.min(progress, 1));
+
+  return (
+    <svg width={size} height={size} className="transform -rotate-90">
+      {/* Background ring */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="rgba(255,255,255,0.1)"
+        strokeWidth={stroke}
+      />
+      {/* Progress ring */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="#58CC02"
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        style={{ transition: "stroke-dashoffset 0.3s ease" }}
+      />
+    </svg>
+  );
+}
+
 export default function TeamSportBrowser({ onClose, showContent }: TeamSportBrowserProps) {
   const router = useRouter();
 
+  // Long-press precompute state
+  const [precomputeState, setPrecomputeState] = useState<{
+    sportId: string;
+    sportName: string;
+    demoVideo: string;
+    jobId: string | null;
+    progress: number;
+    status: "starting" | "processing" | "complete" | "error";
+  } | null>(null);
+
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdProgressRef = useRef(0);
+  const holdAnimRef = useRef(0);
+  const [holdingId, setHoldingId] = useState<string | null>(null);
+  const [holdProgress, setHoldProgress] = useState(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (precomputeState) {
+          cancelPrecompute();
+        } else {
+          onClose();
+        }
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [onClose, precomputeState]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+      if (pollRef.current) clearInterval(pollRef.current);
+      cancelAnimationFrame(holdAnimRef.current);
+    };
+  }, []);
+
+  const cancelPrecompute = useCallback(() => {
+    if (precomputeState?.jobId) {
+      fetch(`${getApiBase()}/api/precompute/${precomputeState.jobId}/cancel`, {
+        method: "POST",
+      }).catch(() => {});
+    }
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setPrecomputeState(null);
+  }, [precomputeState]);
+
+  const startPrecompute = useCallback(async (sportId: string, sportName: string, demoVideo: string) => {
+    setPrecomputeState({
+      sportId,
+      sportName,
+      demoVideo,
+      jobId: null,
+      progress: 0,
+      status: "starting",
+    });
+
+    try {
+      const res = await fetch(`${getApiBase()}/api/precompute/${encodeURIComponent(demoVideo)}`, {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      if (data.cached) {
+        // Already computed — go straight to analyze
+        router.push(
+          `/analyze?mode=precomputed&video=${encodeURIComponent(demoVideo)}&job_id=${data.job_id}`
+        );
+        return;
+      }
+
+      const jobId = data.job_id;
+      setPrecomputeState((prev) => prev ? { ...prev, jobId, status: "processing" } : null);
+
+      // Poll for progress
+      pollRef.current = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`${getApiBase()}/api/precompute/${jobId}/status`);
+          const status = await statusRes.json();
+
+          setPrecomputeState((prev) => {
+            if (!prev) return null;
+            return { ...prev, progress: status.progress || 0, status: status.status };
+          });
+
+          if (status.status === "complete") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            router.push(
+              `/analyze?mode=precomputed&video=${encodeURIComponent(demoVideo)}&job_id=${jobId}`
+            );
+          } else if (status.status === "error") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setPrecomputeState((prev) =>
+              prev ? { ...prev, status: "error" } : null
+            );
+          }
+        } catch {
+          // Retry on next poll
+        }
+      }, 500);
+    } catch (err) {
+      console.error("Failed to start precompute:", err);
+      setPrecomputeState((prev) =>
+        prev ? { ...prev, status: "error" } : null
+      );
+    }
+  }, [router]);
+
+  const handlePointerDown = useCallback((sportId: string, sportName: string, demoVideo: string) => {
+    setHoldingId(sportId);
+    holdProgressRef.current = 0;
+    setHoldProgress(0);
+
+    const startTime = performance.now();
+
+    function animateHold() {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(elapsed / LONG_PRESS_MS, 1);
+      holdProgressRef.current = progress;
+      setHoldProgress(progress);
+
+      if (progress < 1) {
+        holdAnimRef.current = requestAnimationFrame(animateHold);
+      }
+    }
+    holdAnimRef.current = requestAnimationFrame(animateHold);
+
+    longPressTimerRef.current = setTimeout(() => {
+      setHoldingId(null);
+      setHoldProgress(0);
+      cancelAnimationFrame(holdAnimRef.current);
+      // Long press detected — start precompute
+      startPrecompute(sportId, sportName, demoVideo);
+    }, LONG_PRESS_MS);
+  }, [startPrecompute]);
+
+  const handlePointerUp = useCallback((demoVideo: string) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    cancelAnimationFrame(holdAnimRef.current);
+
+    // If hold wasn't long enough, do normal click (instant navigate)
+    if (holdProgressRef.current < 1 && !precomputeState) {
+      router.push(`/analyze?mode=demo&video=${encodeURIComponent(demoVideo)}`);
+    }
+
+    setHoldingId(null);
+    setHoldProgress(0);
+    holdProgressRef.current = 0;
+  }, [router, precomputeState]);
+
+  const handlePointerLeave = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    cancelAnimationFrame(holdAnimRef.current);
+    setHoldingId(null);
+    setHoldProgress(0);
+    holdProgressRef.current = 0;
+  }, []);
 
   return (
     <motion.div
@@ -145,42 +347,115 @@ export default function TeamSportBrowser({ onClose, showContent }: TeamSportBrow
         </button>
       </div>
 
+      {/* Hint */}
+      <div className="px-6 pt-3 pb-0">
+        <p className="text-[11px] text-white/30 font-medium m-0">
+          Tap to stream live &middot; Hold to pre-analyze at max quality
+        </p>
+      </div>
+
       {/* Sport grid */}
-      <div className="flex-1 px-6 py-5 overflow-y-auto">
+      <div className="flex-1 px-6 py-4 overflow-y-auto">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.2 }}
           className="grid grid-cols-3 gap-4"
         >
-          {SPORTS.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => {
-                if (s.demoVideo) {
-                  router.push(`/analyze?mode=demo&video=${encodeURIComponent(s.demoVideo)}`);
-                }
-              }}
-              disabled={!s.demoVideo}
-              className={`group relative overflow-hidden rounded-[16px] border bg-[#111] aspect-[4/3] flex flex-col items-center justify-center gap-3 transition-all duration-100 ${
-                s.demoVideo
-                  ? "border-[#333] cursor-pointer shadow-[0_4px_0_#222] hover:border-white/40 hover:shadow-[0_4px_0_#444] active:shadow-none active:translate-y-[4px]"
-                  : "border-[#222] cursor-default opacity-40"
-              }`}
-            >
-              <div className={`transition-opacity duration-200 ${s.demoVideo ? "opacity-40 group-hover:opacity-80" : "opacity-30"}`}>
-                {SPORT_ICONS[s.id]}
-              </div>
-              <span className="text-white font-extrabold text-sm">
-                {s.name}
-              </span>
-              {!s.demoVideo && (
-                <span className="text-white/30 text-[10px] font-bold">Coming soon</span>
-              )}
-            </button>
-          ))}
+          {SPORTS.map((s) => {
+            const isHolding = holdingId === s.id;
+            return (
+              <button
+                key={s.id}
+                onPointerDown={(e) => {
+                  if (s.demoVideo) {
+                    e.preventDefault();
+                    handlePointerDown(s.id, s.name, s.demoVideo);
+                  }
+                }}
+                onPointerUp={() => {
+                  if (s.demoVideo) handlePointerUp(s.demoVideo);
+                }}
+                onPointerLeave={handlePointerLeave}
+                onContextMenu={(e) => e.preventDefault()}
+                disabled={!s.demoVideo}
+                className={`group relative overflow-hidden rounded-[16px] border bg-[#111] aspect-[4/3] flex flex-col items-center justify-center gap-3 transition-all duration-100 select-none ${
+                  s.demoVideo
+                    ? "border-[#333] cursor-pointer shadow-[0_4px_0_#222] hover:border-white/40 hover:shadow-[0_4px_0_#444] active:shadow-none active:translate-y-[4px]"
+                    : "border-[#222] cursor-default opacity-40"
+                }`}
+              >
+                {/* Hold progress ring overlay */}
+                {isHolding && holdProgress > 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center z-10 bg-black/40">
+                    <ProgressRing progress={holdProgress} size={60} />
+                  </div>
+                )}
+
+                <div className={`transition-opacity duration-200 ${s.demoVideo ? "opacity-40 group-hover:opacity-80" : "opacity-30"}`}>
+                  {SPORT_ICONS[s.id]}
+                </div>
+                <span className="text-white font-extrabold text-sm">
+                  {s.name}
+                </span>
+                {!s.demoVideo && (
+                  <span className="text-white/30 text-[10px] font-bold">Coming soon</span>
+                )}
+              </button>
+            );
+          })}
         </motion.div>
       </div>
+
+      {/* Precompute loading overlay */}
+      <AnimatePresence>
+        {precomputeState && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm"
+          >
+            <div className="flex flex-col items-center gap-6">
+              {/* Progress ring */}
+              <div className="relative">
+                <ProgressRing
+                  progress={precomputeState.progress}
+                  size={140}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-white text-2xl font-extrabold">
+                    {Math.round(precomputeState.progress * 100)}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Sport name */}
+              <div className="text-center">
+                <h3 className="text-white text-lg font-extrabold m-0">
+                  {precomputeState.sportName}
+                </h3>
+                <p className="text-white/50 text-sm mt-1 m-0">
+                  {precomputeState.status === "starting"
+                    ? "Starting analysis..."
+                    : precomputeState.status === "error"
+                    ? "Analysis failed"
+                    : "Analyzing at maximum quality..."}
+                </p>
+              </div>
+
+              {/* Cancel button */}
+              <button
+                onClick={cancelPrecompute}
+                className="mt-4 px-6 py-2 rounded-full border border-white/20 text-white/60 text-sm font-bold bg-transparent cursor-pointer hover:bg-white/10 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

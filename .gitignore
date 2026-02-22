@@ -72,8 +72,12 @@ backend/data/sports_videos/
 # Coach report sent logs
 backend/data/coach_reports/sent/
 
-# Documentation swap files
+# Documentation swap files & generated presentation assets
 documentation/.*.swp
+documentation/*.png
+documentation/*.pdf
+documentation/cusum_plot.py
+documentation/hackathon_math.tex
 InjuryDetection/Assets/Resources/PerformanceTestRunInfo.json
 InjuryDetection/Assets/StreamingAssets/RuntimeActionBindings.json
 InjuryDetection/Assets/StreamingAssets/RuntimeActionBindings.json.meta

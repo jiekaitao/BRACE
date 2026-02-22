@@ -19,7 +19,7 @@ from typing import Any
 import cv2
 import numpy as np
 import torch
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 
@@ -48,6 +48,10 @@ from pipeline_interface import PoseBackend, PipelineResult
 from subject_manager import SubjectManager
 from video_processor import process_video
 from identity_resolver import IdentityResolver
+from precompute import (
+    precompute_video_sync, get_cached, get_job,
+    _precompute_cache, _precompute_jobs, _save_to_disk,
+)
 from embedding_extractor import EmbeddingExtractor, DummyExtractor
 from tensorrt_utils import ensure_tensorrt_engine
 from device_utils import get_best_device
@@ -576,6 +580,179 @@ def demo_video_thumbnail(filename: str):
     return Response(content=buf.tobytes(), media_type="image/jpeg")
 
 
+# ---------------------------------------------------------------------------
+# Precomputed Demo Video Endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/precompute/{filename}")
+async def start_precompute(filename: str):
+    """Start precomputing analysis for a demo video.
+
+    Returns immediately with a job_id. Poll /api/precompute/{job_id}/status
+    for progress. If already cached, returns immediately with status=complete.
+    """
+    path = DEMO_VIDEOS_DIR / filename
+    if not path.exists() or path.suffix != ".mp4":
+        return Response(
+            content='{"error":"Not found"}',
+            status_code=404,
+            media_type="application/json",
+        )
+
+    # Check cache first
+    cached = get_cached(filename)
+    if cached is not None:
+        job_id = str(uuid.uuid4())
+        _precompute_jobs[job_id] = {
+            "status": "complete",
+            "filename": filename,
+            "progress": 1.0,
+            "total_frames": cached["total_frames"],
+            "processed_frames": cached["total_frames"],
+        }
+        return {"job_id": job_id, "status": "complete", "cached": True}
+
+    # Check if already processing this file
+    for jid, job in _precompute_jobs.items():
+        if job.get("filename") == filename and job["status"] == "processing":
+            return {"job_id": jid, "status": "processing", "cached": False}
+
+    # Start new job
+    job_id = str(uuid.uuid4())
+    _precompute_jobs[job_id] = {
+        "status": "queued",
+        "filename": filename,
+        "progress": 0.0,
+        "total_frames": 0,
+        "processed_frames": 0,
+    }
+
+    loop = asyncio.get_event_loop()
+
+    def _run():
+        result = precompute_video_sync(
+            video_path=str(path),
+            backend=pipeline,
+            job_id=job_id,
+            reid_extractor=_reid_extractor,
+            cross_cut_extractor=_clip_reid_extractor,
+        )
+        if result is not None:
+            _precompute_cache[filename] = result
+
+    asyncio.ensure_future(loop.run_in_executor(_executor, _run))
+
+    return {"job_id": job_id, "status": "queued", "cached": False}
+
+
+@app.get("/api/precompute/{job_id}/status")
+def precompute_status(job_id: str):
+    """Poll precompute job progress."""
+    job = get_job(job_id)
+    if job is None:
+        return Response(
+            content='{"error":"Job not found"}',
+            status_code=404,
+            media_type="application/json",
+        )
+    return {
+        "status": job["status"],
+        "progress": job.get("progress", 0),
+        "total_frames": job.get("total_frames", 0),
+        "processed_frames": job.get("processed_frames", 0),
+        "error": job.get("error"),
+    }
+
+
+@app.get("/api/precompute/{job_id}/data")
+def precompute_data(job_id: str):
+    """Return the full precomputed analysis data."""
+    job = get_job(job_id)
+    if job is None:
+        return Response(
+            content='{"error":"Job not found"}',
+            status_code=404,
+            media_type="application/json",
+        )
+    if job["status"] != "complete":
+        return Response(
+            content='{"error":"Not ready yet"}',
+            status_code=202,
+            media_type="application/json",
+        )
+    filename = job["filename"]
+    cached = get_cached(filename)
+    if cached is None:
+        return Response(
+            content='{"error":"Data not found in cache"}',
+            status_code=404,
+            media_type="application/json",
+        )
+    return cached
+
+
+@app.post("/api/precompute/{job_id}/cancel")
+def precompute_cancel(job_id: str):
+    """Cancel a running precompute job."""
+    job = get_job(job_id)
+    if job is None:
+        return Response(
+            content='{"error":"Job not found"}',
+            status_code=404,
+            media_type="application/json",
+        )
+    job["cancelled"] = True
+    return {"status": "cancelling"}
+
+
+@app.patch("/api/precompute/{job_id}/clusters")
+async def rename_precompute_clusters(job_id: str, request: Request):
+    """Rename cluster activity labels in cached precomputed data.
+
+    Body: {"renames": {"old_label": "new_label", ...}}
+    Updates activity_label in every frame's cluster_summary.
+    """
+    job = get_job(job_id)
+    if job is None:
+        return Response(
+            content='{"error":"Job not found"}',
+            status_code=404,
+            media_type="application/json",
+        )
+    if job["status"] != "complete":
+        return Response(
+            content='{"error":"Job not complete"}',
+            status_code=400,
+            media_type="application/json",
+        )
+    filename = job["filename"]
+    cached = get_cached(filename)
+    if cached is None:
+        return Response(
+            content='{"error":"Data not found in cache"}',
+            status_code=404,
+            media_type="application/json",
+        )
+    body = await request.json()
+    renames: dict[str, str] = body.get("renames", {})
+    if not renames:
+        return {"status": "no changes", "updated": 0}
+
+    updated = 0
+    for frame in cached.get("frames", []):
+        subjects = frame.get("subjects", {})
+        for _sid, sdata in subjects.items():
+            cs = sdata.get("cluster_summary", {})
+            for _cid, entry in cs.items():
+                old = entry.get("activity_label", "")
+                if old in renames:
+                    entry["activity_label"] = renames[old]
+                    updated += 1
+    if updated > 0:
+        _save_to_disk(filename, cached)
+    return {"status": "ok", "updated": updated}
+
 
 # ---------------------------------------------------------------------------
 # VectorAI REST API Endpoints
@@ -973,6 +1150,95 @@ async def ws_game_progress(websocket: WebSocket, game_id: str):
 
 
 # ---------------------------------------------------------------------------
+# Crash Analysis API Endpoints
+# ---------------------------------------------------------------------------
+
+_crash_tasks: dict[str, asyncio.Task] = {}
+_crash_results: dict[str, dict] = {}
+_crash_progress_sockets: dict[str, list[WebSocket]] = {}
+
+
+@app.post("/api/crash-analysis")
+async def create_crash_analysis(
+    session_id: str = Query(..., description="Upload session ID"),
+):
+    """Submit a video for crash/collision analysis.
+
+    The session_id must reference a previously uploaded video via POST /api/upload.
+    """
+    video_path = _uploads.get(session_id)
+    if not video_path or not video_path.exists():
+        return {"error": "Video not found. Upload first via POST /api/upload."}
+
+    analysis_id = str(uuid.uuid4())
+
+    # Start async processing task
+    task = asyncio.create_task(
+        _process_crash_bg(analysis_id, video_path)
+    )
+    _crash_tasks[analysis_id] = task
+    task.add_done_callback(lambda t: _crash_tasks.pop(analysis_id, None))
+
+    return {"analysis_id": analysis_id, "status": "processing"}
+
+
+@app.get("/api/crash-analysis/{analysis_id}")
+async def get_crash_analysis(analysis_id: str):
+    """Get crash analysis status and results."""
+    if analysis_id in _crash_results:
+        return _crash_results[analysis_id]
+
+    if analysis_id in _crash_tasks:
+        return {"analysis_id": analysis_id, "status": "processing"}
+
+    return {"error": "Analysis not found", "status": "not_found"}
+
+
+@app.websocket("/ws/crash/{analysis_id}")
+async def ws_crash_progress(websocket: WebSocket, analysis_id: str):
+    """WebSocket for real-time crash analysis progress."""
+    await websocket.accept()
+
+    if analysis_id not in _crash_progress_sockets:
+        _crash_progress_sockets[analysis_id] = []
+    _crash_progress_sockets[analysis_id].append(websocket)
+
+    try:
+        # If already complete, send result immediately
+        if analysis_id in _crash_results:
+            await websocket.send_json({
+                "type": "complete",
+                "data": _crash_results[analysis_id],
+            })
+            return
+
+        # Keep connection alive while processing
+        while analysis_id in _crash_tasks:
+            try:
+                msg = await asyncio.wait_for(websocket.receive(), timeout=5.0)
+            except asyncio.TimeoutError:
+                try:
+                    await websocket.send_json({"type": "heartbeat"})
+                except Exception:
+                    break
+            except WebSocketDisconnect:
+                break
+
+        # Send final result if available
+        if analysis_id in _crash_results:
+            await websocket.send_json({
+                "type": "complete",
+                "data": _crash_results[analysis_id],
+            })
+    except WebSocketDisconnect:
+        pass
+    finally:
+        socks = _crash_progress_sockets.get(analysis_id, [])
+        if websocket in socks:
+            socks.remove(websocket)
+
+
+# ---------------------------------------------------------------------------
 # Replay Export API Endpoints
 # ---------------------------------------------------------------------------
 
@@ -1303,6 +1569,100 @@ async def _process_game_bg(
             )
         except Exception:
             pass
+
+
+async def _process_crash_bg(analysis_id: str, video_path: Path) -> None:
+    """Background task to process a crash analysis video."""
+    try:
+        from crash_processor import process_crash_video
+
+        loop = asyncio.get_event_loop()
+
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            raise ValueError(f"Cannot open video: {video_path}")
+
+        n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
+
+        # Wrap pipeline to read from video file
+        class VideoPipeline:
+            def __init__(self):
+                self._cap = cv2.VideoCapture(str(video_path))
+            def process_frame(self, _rgb):
+                ret, bgr = self._cap.read()
+                if not ret:
+                    return []
+                rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+                return pipeline.process_frame(rgb)
+            def release(self):
+                self._cap.release()
+
+        video_pipeline = VideoPipeline()
+
+        async def _progress_cb(pct: float, data: dict):
+            sockets = _crash_progress_sockets.get(analysis_id, [])
+            for ws in list(sockets):
+                try:
+                    await ws.send_json({
+                        "type": "progress",
+                        "progress": round(pct, 1),
+                        "data": data,
+                    })
+                except Exception:
+                    sockets.remove(ws)
+
+        def _sync_progress(pct, data):
+            try:
+                loop.call_soon_threadsafe(
+                    asyncio.ensure_future,
+                    _progress_cb(pct, data),
+                )
+            except Exception:
+                pass
+
+        result = await loop.run_in_executor(
+            _executor,
+            lambda: process_crash_video(
+                pipeline=video_pipeline,
+                n_frames=n_frames,
+                fps=fps,
+                img_wh=(w, h),
+                progress_callback=_sync_progress,
+                analysis_id=analysis_id,
+            ),
+        )
+
+        video_pipeline.release()
+        _crash_results[analysis_id] = result
+
+        # Notify WebSocket subscribers
+        sockets = _crash_progress_sockets.get(analysis_id, [])
+        for ws in list(sockets):
+            try:
+                await ws.send_json({"type": "complete", "data": result})
+            except Exception:
+                pass
+
+    except Exception as e:
+        print(f"[crash] processing failed: {e}", flush=True)
+        error_result = {
+            "analysis_id": analysis_id,
+            "status": "error",
+            "error": str(e),
+        }
+        _crash_results[analysis_id] = error_result
+
+        # Notify WebSocket subscribers of the error
+        sockets = _crash_progress_sockets.get(analysis_id, [])
+        for ws in list(sockets):
+            try:
+                await ws.send_json({"type": "complete", "data": error_result})
+            except Exception:
+                pass
 
 
 def _gpu_decode_jpeg(jpeg_bytes: bytes) -> np.ndarray:
