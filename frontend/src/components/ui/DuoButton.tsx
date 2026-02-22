@@ -10,7 +10,7 @@ const variantStyles: Record<Variant, string> = {
   secondary:
     "bg-white text-[#4B4B4B] border-2 border-[#E5E5E5] shadow-[0_4px_0_#E5E5E5] hover:bg-[#F7F7F7] active:shadow-none active:translate-y-[4px] active:border-[#CDCDCD]",
   danger:
-    "bg-[#EA2B2B] text-white shadow-[0_4px_0_#CC2424] hover:brightness-105 active:shadow-none active:translate-y-[4px]",
+    "bg-[#FF4B4B] text-white shadow-[0_4px_0_#CC3636] hover:brightness-105 active:shadow-none active:translate-y-[4px]",
   blue:
     "bg-[#1CB0F6] text-white shadow-[0_4px_0_#1899D6] hover:brightness-105 active:shadow-none active:translate-y-[4px]",
 };

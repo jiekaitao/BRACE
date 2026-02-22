@@ -17,7 +17,7 @@ class RiskThreshold:
     medium: float        # threshold for medium severity
     high: float          # threshold for high severity
     joint: str           # "left_knee", "pelvis", "trunk", "bilateral"
-    risk_name: str       # "acl_valgus", "hip_drop", "trunk_lean", "asymmetry", "angular_velocity_spike"
+    risk_name: str       # "knee_valgus", "hip_drop", "trunk_lean", "asymmetry", "angular_velocity_spike"
     enabled: bool = True # False to suppress this risk entirely for this movement
 
 
@@ -38,8 +38,8 @@ GENERIC_PROFILE = MovementProfile(
     display_name="Generic",
     keywords=[],
     thresholds=[
-        RiskThreshold("fppa", 15.0, 25.0, "left_knee", "acl_valgus"),
-        RiskThreshold("fppa", 15.0, 25.0, "right_knee", "acl_valgus"),
+        RiskThreshold("fppa", 15.0, 25.0, "left_knee", "knee_valgus"),
+        RiskThreshold("fppa", 15.0, 25.0, "right_knee", "knee_valgus"),
         RiskThreshold("hip_drop", 8.0, 12.0, "pelvis", "hip_drop"),
         RiskThreshold("trunk_lean", 15.0, 25.0, "trunk", "trunk_lean"),
         RiskThreshold("asymmetry", 15.0, 25.0, "bilateral", "asymmetry"),
@@ -60,8 +60,8 @@ SQUAT_PROFILE = MovementProfile(
     display_name="Squat",
     keywords=["squat", "goblet", "front squat", "back squat", "overhead squat"],
     thresholds=[
-        RiskThreshold("fppa", 12.0, 20.0, "left_knee", "acl_valgus"),
-        RiskThreshold("fppa", 12.0, 20.0, "right_knee", "acl_valgus"),
+        RiskThreshold("fppa", 12.0, 20.0, "left_knee", "knee_valgus"),
+        RiskThreshold("fppa", 12.0, 20.0, "right_knee", "knee_valgus"),
         RiskThreshold("hip_drop", 10.0, 15.0, "pelvis", "hip_drop"),
         RiskThreshold("trunk_lean", 20.0, 30.0, "trunk", "trunk_lean"),
         RiskThreshold("asymmetry", 15.0, 25.0, "bilateral", "asymmetry"),
@@ -83,8 +83,8 @@ LUNGE_PROFILE = MovementProfile(
     display_name="Lunge",
     keywords=["lunge", "lunging", "split squat", "bulgarian"],
     thresholds=[
-        RiskThreshold("fppa", 15.0, 25.0, "left_knee", "acl_valgus"),
-        RiskThreshold("fppa", 15.0, 25.0, "right_knee", "acl_valgus"),
+        RiskThreshold("fppa", 15.0, 25.0, "left_knee", "knee_valgus"),
+        RiskThreshold("fppa", 15.0, 25.0, "right_knee", "knee_valgus"),
         RiskThreshold("hip_drop", 8.0, 12.0, "pelvis", "hip_drop", enabled=False),
         RiskThreshold("trunk_lean", 20.0, 30.0, "trunk", "trunk_lean"),
         RiskThreshold("asymmetry", 15.0, 25.0, "bilateral", "asymmetry", enabled=False),
@@ -106,8 +106,8 @@ RUNNING_PROFILE = MovementProfile(
     display_name="Running",
     keywords=["running", "jogging", "sprinting", "sprint"],
     thresholds=[
-        RiskThreshold("fppa", 10.0, 18.0, "left_knee", "acl_valgus"),
-        RiskThreshold("fppa", 10.0, 18.0, "right_knee", "acl_valgus"),
+        RiskThreshold("fppa", 10.0, 18.0, "left_knee", "knee_valgus"),
+        RiskThreshold("fppa", 10.0, 18.0, "right_knee", "knee_valgus"),
         RiskThreshold("hip_drop", 6.0, 10.0, "pelvis", "hip_drop"),       # Noehren 2013
         RiskThreshold("trunk_lean", 12.0, 20.0, "trunk", "trunk_lean"),
         RiskThreshold("asymmetry", 12.0, 20.0, "bilateral", "asymmetry"),
@@ -129,8 +129,8 @@ WALKING_PROFILE = MovementProfile(
     display_name="Walking",
     keywords=["walking"],
     thresholds=[
-        RiskThreshold("fppa", 12.0, 20.0, "left_knee", "acl_valgus"),
-        RiskThreshold("fppa", 12.0, 20.0, "right_knee", "acl_valgus"),
+        RiskThreshold("fppa", 12.0, 20.0, "left_knee", "knee_valgus"),
+        RiskThreshold("fppa", 12.0, 20.0, "right_knee", "knee_valgus"),
         RiskThreshold("hip_drop", 6.0, 10.0, "pelvis", "hip_drop"),
         RiskThreshold("trunk_lean", 10.0, 18.0, "trunk", "trunk_lean"),
         RiskThreshold("asymmetry", 12.0, 20.0, "bilateral", "asymmetry"),
@@ -151,8 +151,8 @@ JUMP_PROFILE = MovementProfile(
     display_name="Jump",
     keywords=["jump", "jumping", "box jump", "plyometric", "hop", "landing"],
     thresholds=[
-        RiskThreshold("fppa", 10.0, 18.0, "left_knee", "acl_valgus"),
-        RiskThreshold("fppa", 10.0, 18.0, "right_knee", "acl_valgus"),
+        RiskThreshold("fppa", 10.0, 18.0, "left_knee", "knee_valgus"),
+        RiskThreshold("fppa", 10.0, 18.0, "right_knee", "knee_valgus"),
         RiskThreshold("hip_drop", 10.0, 15.0, "pelvis", "hip_drop"),
         RiskThreshold("trunk_lean", 20.0, 30.0, "trunk", "trunk_lean"),
         RiskThreshold("asymmetry", 15.0, 25.0, "bilateral", "asymmetry"),
@@ -174,8 +174,8 @@ DEADLIFT_PROFILE = MovementProfile(
     display_name="Deadlift",
     keywords=["deadlift", "dead lift", "hip hinge", "romanian"],
     thresholds=[
-        RiskThreshold("fppa", 12.0, 20.0, "left_knee", "acl_valgus", enabled=False),
-        RiskThreshold("fppa", 12.0, 20.0, "right_knee", "acl_valgus", enabled=False),
+        RiskThreshold("fppa", 12.0, 20.0, "left_knee", "knee_valgus", enabled=False),
+        RiskThreshold("fppa", 12.0, 20.0, "right_knee", "knee_valgus", enabled=False),
         RiskThreshold("hip_drop", 8.0, 12.0, "pelvis", "hip_drop"),
         RiskThreshold("trunk_lean", 25.0, 40.0, "trunk", "trunk_lean"),
         RiskThreshold("asymmetry", 15.0, 25.0, "bilateral", "asymmetry"),
@@ -197,8 +197,8 @@ PUSH_UP_PROFILE = MovementProfile(
     display_name="Push-up",
     keywords=["push-up", "push up", "pushup"],
     thresholds=[
-        RiskThreshold("fppa", 15.0, 25.0, "left_knee", "acl_valgus", enabled=False),
-        RiskThreshold("fppa", 15.0, 25.0, "right_knee", "acl_valgus", enabled=False),
+        RiskThreshold("fppa", 15.0, 25.0, "left_knee", "knee_valgus", enabled=False),
+        RiskThreshold("fppa", 15.0, 25.0, "right_knee", "knee_valgus", enabled=False),
         RiskThreshold("hip_drop", 8.0, 12.0, "pelvis", "hip_drop", enabled=False),
         RiskThreshold("trunk_lean", 15.0, 25.0, "trunk", "trunk_lean"),
         RiskThreshold("asymmetry", 20.0, 30.0, "bilateral", "asymmetry"),
@@ -220,8 +220,8 @@ PLANK_PROFILE = MovementProfile(
     display_name="Plank",
     keywords=["plank", "side plank"],
     thresholds=[
-        RiskThreshold("fppa", 15.0, 25.0, "left_knee", "acl_valgus", enabled=False),
-        RiskThreshold("fppa", 15.0, 25.0, "right_knee", "acl_valgus", enabled=False),
+        RiskThreshold("fppa", 15.0, 25.0, "left_knee", "knee_valgus", enabled=False),
+        RiskThreshold("fppa", 15.0, 25.0, "right_knee", "knee_valgus", enabled=False),
         RiskThreshold("hip_drop", 8.0, 12.0, "pelvis", "hip_drop", enabled=False),
         RiskThreshold("trunk_lean", 8.0, 15.0, "trunk", "trunk_lean"),
         RiskThreshold("asymmetry", 15.0, 25.0, "bilateral", "asymmetry"),
@@ -243,8 +243,8 @@ LANDING_PROFILE = MovementProfile(
     display_name="Basketball Landing",
     keywords=["basketball landing", "basketball land"],
     thresholds=[
-        RiskThreshold("fppa", 10.0, 18.0, "left_knee", "acl_valgus"),
-        RiskThreshold("fppa", 10.0, 18.0, "right_knee", "acl_valgus"),
+        RiskThreshold("fppa", 10.0, 18.0, "left_knee", "knee_valgus"),
+        RiskThreshold("fppa", 10.0, 18.0, "right_knee", "knee_valgus"),
         RiskThreshold("hip_drop", 8.0, 12.0, "pelvis", "hip_drop"),
         RiskThreshold("trunk_lean", 15.0, 25.0, "trunk", "trunk_lean"),
         RiskThreshold("asymmetry", 15.0, 25.0, "bilateral", "asymmetry"),
@@ -266,8 +266,8 @@ CUTTING_PROFILE = MovementProfile(
     display_name="Basketball Cutting",
     keywords=["cutting", "cut", "crossover", "juke"],
     thresholds=[
-        RiskThreshold("fppa", 10.0, 18.0, "left_knee", "acl_valgus"),
-        RiskThreshold("fppa", 10.0, 18.0, "right_knee", "acl_valgus"),
+        RiskThreshold("fppa", 10.0, 18.0, "left_knee", "knee_valgus"),
+        RiskThreshold("fppa", 10.0, 18.0, "right_knee", "knee_valgus"),
         RiskThreshold("hip_drop", 6.0, 10.0, "pelvis", "hip_drop"),
         RiskThreshold("trunk_lean", 18.0, 28.0, "trunk", "trunk_lean"),
         RiskThreshold("asymmetry", 15.0, 25.0, "bilateral", "asymmetry"),
@@ -289,8 +289,8 @@ SHOOTING_PROFILE = MovementProfile(
     display_name="Basketball Shooting",
     keywords=["shooting", "shot", "free throw", "three pointer", "layup"],
     thresholds=[
-        RiskThreshold("fppa", 12.0, 20.0, "left_knee", "acl_valgus"),
-        RiskThreshold("fppa", 12.0, 20.0, "right_knee", "acl_valgus"),
+        RiskThreshold("fppa", 12.0, 20.0, "left_knee", "knee_valgus"),
+        RiskThreshold("fppa", 12.0, 20.0, "right_knee", "knee_valgus"),
         RiskThreshold("hip_drop", 10.0, 15.0, "pelvis", "hip_drop", enabled=False),
         RiskThreshold("trunk_lean", 12.0, 20.0, "trunk", "trunk_lean"),
         RiskThreshold("asymmetry", 15.0, 25.0, "bilateral", "asymmetry", enabled=False),
@@ -312,8 +312,8 @@ DRIBBLING_PROFILE = MovementProfile(
     display_name="Basketball Dribbling",
     keywords=["dribbling", "dribble", "ball handling"],
     thresholds=[
-        RiskThreshold("fppa", 15.0, 25.0, "left_knee", "acl_valgus"),
-        RiskThreshold("fppa", 15.0, 25.0, "right_knee", "acl_valgus"),
+        RiskThreshold("fppa", 15.0, 25.0, "left_knee", "knee_valgus"),
+        RiskThreshold("fppa", 15.0, 25.0, "right_knee", "knee_valgus"),
         RiskThreshold("hip_drop", 10.0, 15.0, "pelvis", "hip_drop"),
         RiskThreshold("trunk_lean", 20.0, 30.0, "trunk", "trunk_lean"),
         RiskThreshold("asymmetry", 15.0, 25.0, "bilateral", "asymmetry", enabled=False),
@@ -335,8 +335,8 @@ DEFENSE_PROFILE = MovementProfile(
     display_name="Basketball Defense",
     keywords=["defense", "defensive", "guarding", "defensive stance", "defensive slide"],
     thresholds=[
-        RiskThreshold("fppa", 12.0, 20.0, "left_knee", "acl_valgus"),
-        RiskThreshold("fppa", 12.0, 20.0, "right_knee", "acl_valgus"),
+        RiskThreshold("fppa", 12.0, 20.0, "left_knee", "knee_valgus"),
+        RiskThreshold("fppa", 12.0, 20.0, "right_knee", "knee_valgus"),
         RiskThreshold("hip_drop", 6.0, 10.0, "pelvis", "hip_drop"),
         RiskThreshold("trunk_lean", 15.0, 25.0, "trunk", "trunk_lean"),
         RiskThreshold("asymmetry", 15.0, 25.0, "bilateral", "asymmetry", enabled=False),

@@ -163,7 +163,7 @@ class TestExistingProfilesUnaffected:
 class TestBasketballSpecificThresholds:
     # --- LANDING ---
     def test_landing_tight_fppa(self):
-        fppa = [t for t in LANDING_PROFILE.thresholds if t.risk_name == "acl_valgus"]
+        fppa = [t for t in LANDING_PROFILE.thresholds if t.risk_name == "knee_valgus"]
         assert len(fppa) >= 1
         assert fppa[0].medium == pytest.approx(10.0)
         assert fppa[0].high == pytest.approx(18.0)
@@ -181,7 +181,7 @@ class TestBasketballSpecificThresholds:
 
     # --- CUTTING ---
     def test_cutting_tight_fppa(self):
-        fppa = [t for t in CUTTING_PROFILE.thresholds if t.risk_name == "acl_valgus"]
+        fppa = [t for t in CUTTING_PROFILE.thresholds if t.risk_name == "knee_valgus"]
         assert len(fppa) >= 1
         assert fppa[0].medium == pytest.approx(10.0)
         assert fppa[0].high == pytest.approx(18.0)
@@ -212,7 +212,7 @@ class TestBasketballSpecificThresholds:
 
     # --- DRIBBLING ---
     def test_dribbling_relaxed_fppa(self):
-        fppa = [t for t in DRIBBLING_PROFILE.thresholds if t.risk_name == "acl_valgus"]
+        fppa = [t for t in DRIBBLING_PROFILE.thresholds if t.risk_name == "knee_valgus"]
         assert len(fppa) >= 1
         assert fppa[0].medium == pytest.approx(15.0)
         assert fppa[0].high == pytest.approx(25.0)

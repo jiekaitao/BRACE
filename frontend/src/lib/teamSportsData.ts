@@ -22,9 +22,16 @@ export const SPORTS: Sport[] = [
   {
     id: "large-class",
     name: "Large Class",
+    demoVideo: "large_class.mp4",
   },
   {
     id: "boxing",
     name: "Boxing",
+    demoVideo: "boxing.mp4",
+  },
+  {
+    id: "total-body-workout",
+    name: "Total Body Workout",
+    demoVideo: "total_body_workout.mp4",
   },
 ];

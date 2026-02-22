@@ -5,6 +5,18 @@ import { getApiBase } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import type { ChatMessage, InjuryProfile, ChatResponse } from "@/lib/types";
 
+// Metric mapping for display — which BRACE metric each injury type maps to
+export const INJURY_METRIC_MAP: Record<string, string> = {
+  acl: "FPPA (knee valgus)",
+  shoulder: "Angular Velocity",
+  ankle: "Angular Velocity",
+  lower_back: "Trunk Lean + Hip Drop",
+  knee_general: "FPPA (knee valgus)",
+  hip: "Hip Drop",
+  hamstring: "Bilateral Asymmetry",
+  wrist: "Angular Velocity",
+};
+
 interface UseChatReturn {
   messages: ChatMessage[];
   loading: boolean;

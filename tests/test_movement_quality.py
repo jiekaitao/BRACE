@@ -809,7 +809,7 @@ class TestInjuryRisks:
             "hip_drop": 1.0, "trunk_lean": 3.0, "asymmetry": 5.0,
         }
         risks = evaluate_injury_risks(biomech)
-        acl_risks = [r for r in risks if r["risk"] == "acl_valgus"]
+        acl_risks = [r for r in risks if r["risk"] == "knee_valgus"]
         assert len(acl_risks) == 1
         assert acl_risks[0]["severity"] == "medium"
         assert acl_risks[0]["joint"] == "left_knee"
@@ -900,13 +900,13 @@ class TestInjuryRisksWithProfile:
         }
         # With squat profile: 13 > 12 = medium
         risks_squat = evaluate_injury_risks(biomech, profile=SQUAT_PROFILE)
-        acl_risks = [r for r in risks_squat if r["risk"] == "acl_valgus"]
+        acl_risks = [r for r in risks_squat if r["risk"] == "knee_valgus"]
         assert len(acl_risks) == 1
         assert acl_risks[0]["severity"] == "medium"
 
         # Without profile (generic): 13 < 15 = no trigger
         risks_generic = evaluate_injury_risks(biomech)
-        acl_risks_generic = [r for r in risks_generic if r["risk"] == "acl_valgus"]
+        acl_risks_generic = [r for r in risks_generic if r["risk"] == "knee_valgus"]
         assert len(acl_risks_generic) == 0
 
     def test_no_profile_backward_compatible(self):
@@ -916,7 +916,7 @@ class TestInjuryRisksWithProfile:
             "hip_drop": 10.0, "trunk_lean": 3.0, "asymmetry": 5.0,
         }
         risks = evaluate_injury_risks(biomech)
-        acl_risks = [r for r in risks if r["risk"] == "acl_valgus"]
+        acl_risks = [r for r in risks if r["risk"] == "knee_valgus"]
         assert len(acl_risks) == 1
         assert acl_risks[0]["severity"] == "medium"
         hip_risks = [r for r in risks if r["risk"] == "hip_drop"]
@@ -930,7 +930,7 @@ class TestInjuryRisksWithProfile:
             "hip_drop": 1.0, "trunk_lean": 3.0, "asymmetry": 5.0,
         }
         risks = evaluate_injury_risks(biomech, profile=DEADLIFT_PROFILE)
-        acl_risks = [r for r in risks if r["risk"] == "acl_valgus"]
+        acl_risks = [r for r in risks if r["risk"] == "knee_valgus"]
         assert len(acl_risks) == 0
 
     def test_deadlift_profile_relaxed_trunk_lean(self):

@@ -48,13 +48,13 @@ class TestInjuryEvent:
     def test_create_with_required_fields(self):
         """Can create an InjuryEvent with required fields."""
         ev = InjuryEvent(
-            risk_name="acl_valgus",
+            risk_name="knee_valgus",
             severity="medium",
             joint="left_knee",
             timestamp=10.5,
             frame_index=315,
         )
-        assert ev.risk_name == "acl_valgus"
+        assert ev.risk_name == "knee_valgus"
         assert ev.severity == "medium"
         assert ev.joint == "left_knee"
         assert ev.timestamp == 10.5
@@ -69,14 +69,14 @@ class TestInjuryEvent:
 
     def test_consolidation_key_same(self):
         """Two events with same risk_name and joint share a consolidation key."""
-        e1 = InjuryEvent("acl_valgus", "medium", "left_knee", 1.0, 30)
-        e2 = InjuryEvent("acl_valgus", "medium", "left_knee", 3.0, 90)
+        e1 = InjuryEvent("knee_valgus", "medium", "left_knee", 1.0, 30)
+        e2 = InjuryEvent("knee_valgus", "medium", "left_knee", 3.0, 90)
         assert e1.key == e2.key
 
     def test_consolidation_key_different_joints(self):
         """Events with different joints have different consolidation keys."""
-        e1 = InjuryEvent("acl_valgus", "medium", "left_knee", 1.0, 30)
-        e2 = InjuryEvent("acl_valgus", "medium", "right_knee", 1.0, 30)
+        e1 = InjuryEvent("knee_valgus", "medium", "left_knee", 1.0, 30)
+        e2 = InjuryEvent("knee_valgus", "medium", "right_knee", 1.0, 30)
         assert e1.key != e2.key
 
 
@@ -191,7 +191,7 @@ def _make_quality(risks=None):
     return q
 
 
-def _risk(name="acl_valgus", severity="medium", joint="left_knee", desc=""):
+def _risk(name="knee_valgus", severity="medium", joint="left_knee", desc=""):
     """Shorthand for an injury risk dict as MovementQualityTracker would emit."""
     return {
         "risk_name": name,
@@ -220,7 +220,7 @@ class TestProcessFrame:
     def test_medium_risk_creates_event(self):
         """Frame with medium risk → creates InjuryEvent."""
         e = PlayerRiskEngine()
-        q = _make_quality([_risk("acl_valgus", "medium", "left_knee")])
+        q = _make_quality([_risk("knee_valgus", "medium", "left_knee")])
         state = e.process_frame(quality=q, frame_index=0, video_time=0.0)
         assert len(state.events) == 1
         assert state.events[0].severity == "medium"
@@ -231,7 +231,7 @@ class TestProcessFrame:
         for i in range(4):
             # Space events beyond consolidation window (>5s apart)
             t = i * 10.0
-            q = _make_quality([_risk("acl_valgus", "medium", "left_knee")])
+            q = _make_quality([_risk("knee_valgus", "medium", "left_knee")])
             state = e.process_frame(quality=q, frame_index=i * 300, video_time=t)
         assert state.status == RiskStatus.YELLOW
 
@@ -252,8 +252,8 @@ class TestConsolidation:
         """Two events same risk+joint within 5s → 1 consolidated event."""
         e = PlayerRiskEngine()
         events = [
-            InjuryEvent("acl_valgus", "medium", "left_knee", 1.0, 30),
-            InjuryEvent("acl_valgus", "medium", "left_knee", 3.0, 90),
+            InjuryEvent("knee_valgus", "medium", "left_knee", 1.0, 30),
+            InjuryEvent("knee_valgus", "medium", "left_knee", 3.0, 90),
         ]
         result = e._consolidate_injury_risks(events)
         assert len(result) == 1
@@ -262,8 +262,8 @@ class TestConsolidation:
         """Two events same risk+joint >5s apart → 2 events."""
         e = PlayerRiskEngine()
         events = [
-            InjuryEvent("acl_valgus", "medium", "left_knee", 1.0, 30),
-            InjuryEvent("acl_valgus", "medium", "left_knee", 10.0, 300),
+            InjuryEvent("knee_valgus", "medium", "left_knee", 1.0, 30),
+            InjuryEvent("knee_valgus", "medium", "left_knee", 10.0, 300),
         ]
         result = e._consolidate_injury_risks(events)
         assert len(result) == 2
@@ -272,7 +272,7 @@ class TestConsolidation:
         """Events with different risk_names → no consolidation."""
         e = PlayerRiskEngine()
         events = [
-            InjuryEvent("acl_valgus", "medium", "left_knee", 1.0, 30),
+            InjuryEvent("knee_valgus", "medium", "left_knee", 1.0, 30),
             InjuryEvent("hip_drop", "medium", "left_knee", 2.0, 60),
         ]
         result = e._consolidate_injury_risks(events)
@@ -303,7 +303,7 @@ class TestDetermineStatus:
     def test_high_severity_at_least_yellow(self):
         """Any single 'high' severity event → at least YELLOW."""
         e = PlayerRiskEngine()
-        events = [InjuryEvent("acl_valgus", "high", "left_knee", 0, 0)]
+        events = [InjuryEvent("knee_valgus", "high", "left_knee", 0, 0)]
         status = e._determine_status(events)
         assert status >= RiskStatus.YELLOW
 
@@ -356,12 +356,12 @@ class TestGetPlayerSummary:
         # Add two events spaced beyond consolidation window
         for i in range(2):
             t = i * 10.0
-            q = _make_quality([_risk("acl_valgus", "medium", "left_knee")])
+            q = _make_quality([_risk("knee_valgus", "medium", "left_knee")])
             e.process_frame(quality=q, frame_index=i * 300, video_time=t)
         s = e.get_player_summary()
         assert s["status"] == "GREEN"
         assert s["event_count"] == 2
         assert len(s["events"]) == 2
-        assert s["events"][0]["risk_name"] == "acl_valgus"
+        assert s["events"][0]["risk_name"] == "knee_valgus"
         assert s["pull_recommended"] is False
         assert s["workload"]["total_frames"] == 2

@@ -25,7 +25,8 @@ const RISK_COLORS: Record<string, string> = {
 };
 
 const RISK_LABELS: Record<string, string> = {
-  acl_valgus: "ACL Risk",
+  knee_valgus: "Knee Valgus",
+  acl_valgus: "Knee Valgus",  // backward compat
   hip_drop: "Hip Drop",
   trunk_lean: "Trunk Lean",
   asymmetry: "Asymmetry",

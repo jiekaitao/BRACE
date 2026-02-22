@@ -387,10 +387,10 @@ def evaluate_injury_risks(
     for side, key in [("left_knee", "fppa_left"), ("right_knee", "fppa_right")]:
         val = abs(biomechanics.get(key, 0.0))
         if val > 25.0:
-            risks.append({"joint": side, "risk": "acl_valgus", "severity": "high",
+            risks.append({"joint": side, "risk": "knee_valgus", "severity": "high",
                           "value": round(val, 1), "threshold": 25.0})
         elif val > 15.0:
-            risks.append({"joint": side, "risk": "acl_valgus", "severity": "medium",
+            risks.append({"joint": side, "risk": "knee_valgus", "severity": "medium",
                           "value": round(val, 1), "threshold": 15.0})
 
     # Hip drop risk
@@ -420,12 +420,11 @@ def evaluate_injury_risks(
         risks.append({"joint": "bilateral", "risk": "asymmetry", "severity": "medium",
                       "value": round(val, 1), "threshold": 15.0})
 
-    # Knee angular velocity spike
+    # Angular velocity spike (check all joints, not just knees)
     if angular_velocities:
-        for side in ["left_knee", "right_knee"]:
-            vel = angular_velocities.get(side, 0.0)
+        for joint_name, vel in angular_velocities.items():
             if vel > 500.0:
-                risks.append({"joint": side, "risk": "angular_velocity_spike",
+                risks.append({"joint": joint_name, "risk": "angular_velocity_spike",
                               "severity": "medium", "value": round(vel, 1),
                               "threshold": 500.0})
 
@@ -493,10 +492,10 @@ def _evaluate_with_modified_thresholds(
     for side, key in [("left_knee", "fppa_left"), ("right_knee", "fppa_right")]:
         val = abs(biomechanics.get(key, 0.0))
         if val > fppa_t["high"]:
-            risks.append({"joint": side, "risk": "acl_valgus", "severity": "high",
+            risks.append({"joint": side, "risk": "knee_valgus", "severity": "high",
                           "value": round(val, 1), "threshold": fppa_t["high"]})
         elif val > fppa_t["medium"]:
-            risks.append({"joint": side, "risk": "acl_valgus", "severity": "medium",
+            risks.append({"joint": side, "risk": "knee_valgus", "severity": "medium",
                           "value": round(val, 1), "threshold": fppa_t["medium"]})
 
     hip_t = thresholds.get("hip_drop", {"medium": 8.0, "high": 12.0})
@@ -528,10 +527,10 @@ def _evaluate_with_modified_thresholds(
 
     av_t = thresholds.get("angular_velocity", {"medium": 500.0})
     if angular_velocities:
-        for side in ["left_knee", "right_knee"]:
-            vel = angular_velocities.get(side, 0.0)
+        # Check all joints with angular velocity data, not just knees
+        for joint_name, vel in angular_velocities.items():
             if vel > av_t["medium"]:
-                risks.append({"joint": side, "risk": "angular_velocity_spike",
+                risks.append({"joint": joint_name, "risk": "angular_velocity_spike",
                               "severity": "medium", "value": round(vel, 1),
                               "threshold": av_t["medium"]})
 

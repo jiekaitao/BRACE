@@ -81,8 +81,8 @@ body {
 .fade-up {
   opacity: 0;
   transform: translateY(16px);
-  animation: fadeUp 0.4s var(--ease-out) forwards;
-  animation-delay: calc(var(--stagger-index, 0) * 60ms);
+  animation: fadeUp 0.2s var(--ease-out) forwards;
+  animation-delay: calc(var(--stagger-index, 0) * 30ms);
 }
 
 @keyframes fadeUp {
@@ -96,23 +96,23 @@ body {
 .stagger-children > * {
   opacity: 0;
   transform: translateY(16px);
-  animation: fadeUp 0.4s var(--ease-out) forwards;
+  animation: fadeUp 0.2s var(--ease-out) forwards;
 }
 .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
-.stagger-children > *:nth-child(2) { animation-delay: 60ms; }
-.stagger-children > *:nth-child(3) { animation-delay: 120ms; }
-.stagger-children > *:nth-child(4) { animation-delay: 180ms; }
-.stagger-children > *:nth-child(5) { animation-delay: 240ms; }
-.stagger-children > *:nth-child(6) { animation-delay: 300ms; }
-.stagger-children > *:nth-child(7) { animation-delay: 360ms; }
-.stagger-children > *:nth-child(8) { animation-delay: 420ms; }
-.stagger-children > *:nth-child(n + 9) { animation-delay: 450ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 30ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 60ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 90ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 120ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 180ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 210ms; }
+.stagger-children > *:nth-child(n + 9) { animation-delay: 225ms; }
 
 /* ─── Scale-in (hero) ─── */
 .scale-in {
   opacity: 0;
   transform: scale(0.9);
-  animation: scaleIn 0.4s var(--ease-out-back) forwards;
+  animation: scaleIn 0.2s var(--ease-out-back) forwards;
 }
 
 @keyframes scaleIn {
@@ -129,7 +129,7 @@ body {
   background-repeat: no-repeat;
   background-position: 0 95%;
   background-size: 0% 3px;
-  animation: drawUnderline 0.6s ease-out 0.5s forwards;
+  animation: drawUnderline 0.3s ease-out 0.25s forwards;
 }
 
 @keyframes drawUnderline {
@@ -181,6 +181,13 @@ body {
   40%, 80% { transform: translateX(6px); }
 }
 .shake { animation: shake 0.4s ease-in-out; }
+
+/* ─── Slow spin (loading sparkle) ─── */
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow { animation: spinSlow 3s linear infinite; }
 
 /* ─── Attention pulse ─── */
 @keyframes pulse {

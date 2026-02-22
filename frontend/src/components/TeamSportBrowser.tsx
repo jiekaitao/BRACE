@@ -70,6 +70,25 @@ const SPORT_ICONS: Record<string, React.ReactNode> = {
       <circle cx="52" cy="54" r="1.5" fill="white" fillOpacity="0.25" />
     </svg>
   ),
+  "total-body-workout": (
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      {/* Person */}
+      <circle cx="32" cy="10" r="5" />
+      <path d="M32 15v16" />
+      <path d="M24 22h16" />
+      <path d="M26 42l6-11 6 11" />
+      {/* Dumbbell left */}
+      <rect x="8" y="20" width="4" height="8" rx="1" fill="white" fillOpacity="0.5" />
+      <path d="M12 24h12" strokeWidth="2" />
+      {/* Dumbbell right */}
+      <rect x="52" y="20" width="4" height="8" rx="1" fill="white" fillOpacity="0.5" />
+      <path d="M40 24h12" strokeWidth="2" />
+      {/* Energy lines */}
+      <path d="M20 48l-4 8" strokeWidth="1" opacity="0.4" />
+      <path d="M32 48v8" strokeWidth="1" opacity="0.4" />
+      <path d="M44 48l4 8" strokeWidth="1" opacity="0.4" />
+    </svg>
+  ),
   boxing: (
     <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       {/* Left glove */}

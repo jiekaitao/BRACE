@@ -76,16 +76,28 @@ function SectionToggle({ label, open, onToggle, badge }: {
   );
 }
 
+// Risk names that map to injury types for personalized badges
+const RISK_TO_INJURY: Record<string, string[]> = {
+  knee_valgus: ["acl", "knee_general"],
+  acl_valgus: ["acl", "knee_general"],
+  hip_drop: ["hip", "lower_back"],
+  trunk_lean: ["lower_back"],
+  asymmetry: ["hamstring"],
+  angular_velocity_spike: ["shoulder", "ankle", "wrist"],
+};
+
 interface MovementQualityPanelProps {
   subjectsRef: React.MutableRefObject<Map<number, SubjectState>>;
   selectedSubjectRef: React.MutableRefObject<number | null>;
   showDebug?: boolean;
+  injuryTypes?: string[];
 }
 
 export default function MovementQualityPanel({
   subjectsRef,
   selectedSubjectRef,
   showDebug = false,
+  injuryTypes,
 }: MovementQualityPanelProps) {
   const [quality, setQuality] = useState<FrameQuality>({});
   const [showRisks, setShowRisks] = useState(true);
@@ -176,34 +188,42 @@ export default function MovementQualityPanel({
             {riskCount === 0 && (
               <span className="text-[11px] text-[#AFAFAF]">No risks detected</span>
             )}
-            {risks?.map((r, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between px-2 py-1 rounded"
-                style={{ backgroundColor: severityColor(r.severity) + "18" }}
-              >
-                <div className="flex items-center gap-1.5">
-                  <div
-                    className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: severityColor(r.severity) }}
-                  />
-                  <span className="text-[11px] font-bold text-[#4B4B4B]">
-                    {r.risk}
-                  </span>
-                  {guideline && guideline.name !== "generic" && (
-                    <span className="text-[9px] text-[#AFAFAF]">
-                      ({guideline.display_name.toLowerCase()})
-                    </span>
-                  )}
-                </div>
-                <span
-                  className="text-[10px] font-bold uppercase flex-shrink-0"
-                  style={{ color: severityColor(r.severity) }}
+            {risks?.map((r, i) => {
+              const isPersonalized = injuryTypes && RISK_TO_INJURY[r.risk]?.some(t => injuryTypes.includes(t));
+              return (
+                <div
+                  key={i}
+                  className="flex items-center justify-between px-2 py-1 rounded"
+                  style={{ backgroundColor: severityColor(r.severity) + "18" }}
                 >
-                  {r.severity}
-                </span>
-              </div>
-            ))}
+                  <div className="flex items-center gap-1.5">
+                    <div
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: severityColor(r.severity) }}
+                    />
+                    <span className="text-[11px] font-bold text-[#4B4B4B]">
+                      {r.risk}
+                    </span>
+                    {isPersonalized && (
+                      <span className="text-[9px] font-bold text-[#CE82FF]">
+                        personalized
+                      </span>
+                    )}
+                    {guideline && guideline.name !== "generic" && (
+                      <span className="text-[9px] text-[#AFAFAF]">
+                        ({guideline.display_name.toLowerCase()})
+                      </span>
+                    )}
+                  </div>
+                  <span
+                    className="text-[10px] font-bold uppercase flex-shrink-0"
+                    style={{ color: severityColor(r.severity) }}
+                  >
+                    {r.severity}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>

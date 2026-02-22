@@ -21,6 +21,8 @@ import MovementQualityPanel from "@/components/MovementQualityPanel";
 import RiskSummaryCard from "@/components/RiskSummaryCard";
 import JerseyDebugPanel from "@/components/JerseyDebugPanel";
 import WorkoutTimeline from "@/components/WorkoutTimeline";
+import InjuryContextPanel from "@/components/InjuryContextPanel";
+import { useAuth } from "@/contexts/AuthContext";
 
 function VideoControls({ videoRef, replaying }: { videoRef: React.RefObject<HTMLVideoElement | null>; replaying: boolean }) {
   const [paused, setPaused] = useState(false);
@@ -91,6 +93,7 @@ function AnalyzeContent() {
   const searchParams = useSearchParams();
   const paramMode = searchParams.get("mode");
   const paramVideo = searchParams.get("video");
+  const { user } = useAuth();
 
   const initialMode = paramMode === "upload" ? "video" : "webcam";
 
@@ -353,7 +356,7 @@ function AnalyzeContent() {
                   equipmentRef={equipmentRef}
                   onSelectSubject={selectSubject}
                   mirrored={mode === "webcam" && !isDemo}
-                  showRisks={showDebug}
+                  showRisks={true}
                 />
               )}
 
@@ -449,6 +452,12 @@ function AnalyzeContent() {
             fatigueIndex={fatigueIndex}
             peakVelocity={peakVelocity}
           />
+          {user?.injury_profile && (
+            <InjuryContextPanel
+              injuryProfile={user.injury_profile as unknown as import("@/lib/types").InjuryProfile}
+              riskModifiers={user.risk_modifiers as unknown as import("@/lib/types").RiskModifiers | null}
+            />
+          )}
           {active && (
             <VelocityGraph
               subjectsRef={subjectsRef}
@@ -462,6 +471,7 @@ function AnalyzeContent() {
               subjectsRef={subjectsRef}
               selectedSubjectRef={selectedSubjectRef}
               showDebug={showDebug}
+              injuryTypes={(user?.injury_profile as unknown as import("@/lib/types").InjuryProfile | null)?.injuries?.map(inj => inj.type)}
             />
           )}
           {active && (

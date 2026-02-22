@@ -147,12 +147,12 @@ class TestProfileIntegrity:
 
     def test_deadlift_fppa_disabled(self):
         """Deadlift profile should have FPPA disabled."""
-        fppa_thresholds = [t for t in DEADLIFT_PROFILE.thresholds if t.risk_name == "acl_valgus"]
+        fppa_thresholds = [t for t in DEADLIFT_PROFILE.thresholds if t.risk_name == "knee_valgus"]
         assert len(fppa_thresholds) == 2  # left and right
         assert all(not t.enabled for t in fppa_thresholds)
 
     def test_running_stricter_fppa(self):
         """Running profile should have stricter FPPA thresholds than generic."""
-        generic_fppa = [t for t in GENERIC_PROFILE.thresholds if t.risk_name == "acl_valgus"][0]
-        running_fppa = [t for t in RUNNING_PROFILE.thresholds if t.risk_name == "acl_valgus"][0]
+        generic_fppa = [t for t in GENERIC_PROFILE.thresholds if t.risk_name == "knee_valgus"][0]
+        running_fppa = [t for t in RUNNING_PROFILE.thresholds if t.risk_name == "knee_valgus"][0]
         assert running_fppa.medium < generic_fppa.medium

@@ -194,6 +194,8 @@ WS /ws/games/{game_id} → real-time progress to frontend dashboard
 
 **Jersey detection**: `JerseyDetector` uses `gemini-2.5-flash` to identify jersey numbers/colors from cropped player images. Results fed to `IdentityResolver` for cross-cut identity merging.
 
+**Team clustering**: `cluster_teams_visual()` in `jersey_detector.py` runs K-Means on HSV color histograms (16 hue × 8 sat = 128-dim) from the upper 60% (torso) of player crops to split subjects into 2 teams. More robust than Gemini color strings ("dark blue" vs "navy"). Runs every jersey detection cycle (~30s). Results sent as `team_id` + `team_color` (hex) per subject in the WebSocket payload.
+
 ### Offline Analysis Pipelines (secondary)
 
 **Video analysis**: `scripts/analyze_video.py` — MediaPipe → SRP → segment → cluster → annotated MP4.
@@ -251,6 +253,8 @@ WS /ws/games/{game_id} → real-time progress to frontend dashboard
 - `frontend/src/components/TeamSportBrowser.tsx` — Sport selection for team monitoring mode
 - `frontend/src/components/InjuryProfileCard.tsx` — Display/edit injury profile with severity badges
 - `frontend/src/components/PlayerRiskBadge.tsx` — GREEN/YELLOW/RED risk status badge for game analysis
+- `frontend/src/components/EmbeddingGraph.tsx` — 3D UMAP scatter plot (Three.js), supports jersey/team color mode, hover popover
+- `frontend/src/components/JerseyDebugPanel.tsx` — Debug panel showing jersey detection results, Gemini response, team clustering assignment
 - `frontend/src/components/dashboard/` — BiomechanicsChart, GuidelinesPanel, TrendCharts, WorkoutListItem
 
 **Lib:**
@@ -297,6 +301,6 @@ WS /ws/games/{game_id} → real-time progress to frontend dashboard
 
 ## Testing
 
-~473 tests using synthetic skeleton data (sinusoidal motion with fixed anchor joints). All tests must pass before any commit. Key test files: `test_movement_quality.py` (99), `test_movement_guidelines.py` (33), `test_basketball_profiles.py` (35), `test_player_risk_engine.py` (31), `test_jersey_detector.py` (27), `test_motion_clustering.py` (23), `test_gemini_classifier.py` (22), `test_pipeline_interface.py` (20), `test_identity_resolver.py` (15), `test_identity_resolver_jersey.py` (20), `test_game_api.py` (14), `test_botsort_tracker.py` (16).
+~479 tests using synthetic skeleton data (sinusoidal motion with fixed anchor joints). All tests must pass before any commit. Key test files: `test_movement_quality.py` (110), `test_basketball_profiles.py` (57), `test_movement_guidelines.py` (33), `test_player_risk_engine.py` (33), `test_jersey_detector.py` (30), `test_risk_profile.py` (27), `test_motion_clustering.py` (23), `test_gemini_classifier.py` (22), `test_pipeline_interface.py` (20), `test_identity_resolver_jersey.py` (20), `test_botsort_tracker.py` (16), `test_identity_resolver.py` (15), `test_game_api.py` (14).
 
 Some tests (`test_auth.py`, `test_botsort_tracker.py`, `test_chat_agent.py`, `test_identity_resolver.py`, `test_identity_resolver_jersey.py`, `test_multi_person.py`, `test_pipeline_interface.py`, `test_db.py`) require GPU-only dependencies and will only pass inside Docker containers.
