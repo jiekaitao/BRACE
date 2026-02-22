@@ -4,6 +4,7 @@ using UnityEngine.UI;
 /// <summary>
 /// World-space stats panel showing real-time BRACE analysis for the selected subject.
 /// Spawns in front of the user on selection, live-updates at 4Hz from WebSocket data.
+/// Auto-finds BraceWebSocket if not assigned in Inspector.
 /// </summary>
 public class InfoPanel : MonoBehaviour
 {
@@ -22,10 +23,14 @@ public class InfoPanel : MonoBehaviour
 
     private string _selectedSubjectId;
     private float _lastUpdateTime;
-    private const float UPDATE_INTERVAL = 0.25f; // 4 Hz
+    private const float UPDATE_INTERVAL = 0.25f;
 
     private void Start()
     {
+        // Auto-find BraceWebSocket
+        if (braceWs == null)
+            braceWs = FindObjectOfType<BraceWebSocket>();
+
         var rig = FindObjectOfType<OVRCameraRig>();
         if (rig != null)
             _cameraAnchor = rig.centerEyeAnchor;
@@ -57,10 +62,6 @@ public class InfoPanel : MonoBehaviour
         UpdateContent(data);
     }
 
-    // ------------------------------------------------------------------
-    // Events
-    // ------------------------------------------------------------------
-
     private void OnSubjectSelected(SubjectBox box)
     {
         if (box == null)
@@ -72,12 +73,10 @@ public class InfoPanel : MonoBehaviour
 
         _selectedSubjectId = box.subjectId;
 
-        // Position panel in front of user
         var ct = _canvas.transform;
         ct.position = _cameraAnchor.position + _cameraAnchor.forward * displayDistance;
         ct.rotation = Quaternion.LookRotation(ct.position - _cameraAnchor.position);
 
-        // Initial content
         _titleText.text = box.latestData?.label ?? box.subjectId;
         if (box.latestData != null)
             UpdateContent(box.latestData);
@@ -87,22 +86,15 @@ public class InfoPanel : MonoBehaviour
         _canvas.gameObject.SetActive(true);
     }
 
-    // ------------------------------------------------------------------
-    // Content formatting
-    // ------------------------------------------------------------------
-
     private void UpdateContent(SubjectData data)
     {
-        // Title: label + activity
         string activity = GetActivityLabel(data);
         _titleText.text = activity != null
             ? $"{data.label}  -  {activity}"
             : data.label ?? "";
 
-        // Body
         var sb = new System.Text.StringBuilder();
 
-        // Phase & reps
         if (data.quality?.movement_phase != null)
         {
             var mp = data.quality.movement_phase;
@@ -113,7 +105,6 @@ public class InfoPanel : MonoBehaviour
             sb.AppendLine($"Phase: {Capitalize(data.phase)}");
         }
 
-        // Form score
         if (data.quality != null)
         {
             int form = Mathf.RoundToInt(data.quality.form_score);
@@ -123,7 +114,6 @@ public class InfoPanel : MonoBehaviour
 
         sb.AppendLine();
 
-        // Biomechanics
         if (data.quality?.biomechanics != null)
         {
             var bio = data.quality.biomechanics;
@@ -133,7 +123,6 @@ public class InfoPanel : MonoBehaviour
             sb.AppendLine($"Asymmetry: {bio.asymmetry:F1}%");
         }
 
-        // Injury risks
         if (data.quality?.injury_risks != null && data.quality.injury_risks.Count > 0)
         {
             sb.AppendLine();
@@ -145,14 +134,12 @@ public class InfoPanel : MonoBehaviour
             }
         }
 
-        // Fatigue
         if (data.fatigue_index > 0.01f)
         {
             sb.AppendLine();
             sb.AppendLine($"Fatigue: {data.fatigue_index:P0}");
         }
 
-        // Coaching cues
         if (data.quality?.active_guideline?.form_cues != null
             && data.quality.active_guideline.form_cues.Count > 0)
         {
@@ -162,7 +149,6 @@ public class InfoPanel : MonoBehaviour
                 sb.AppendLine($"  {cue}");
         }
 
-        // Alert
         if (!string.IsNullOrEmpty(data.alert_text))
         {
             sb.AppendLine();
@@ -171,10 +157,6 @@ public class InfoPanel : MonoBehaviour
 
         _bodyText.text = sb.ToString();
     }
-
-    // ------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------
 
     private static string GetActivityLabel(SubjectData data)
     {
@@ -200,7 +182,6 @@ public class InfoPanel : MonoBehaviour
 
     private static string FormatRiskName(string raw)
     {
-        // "acl_valgus" → "ACL Valgus", "hip_drop" → "Hip Drop"
         if (string.IsNullOrEmpty(raw)) return raw;
         return raw.Replace("_", " ")
                    .Replace("acl", "ACL")
@@ -212,10 +193,6 @@ public class InfoPanel : MonoBehaviour
         if (_canvas != null)
             _canvas.gameObject.SetActive(false);
     }
-
-    // ------------------------------------------------------------------
-    // Panel creation (same layout as before, taller for more content)
-    // ------------------------------------------------------------------
 
     private void CreatePanel()
     {
@@ -232,7 +209,6 @@ public class InfoPanel : MonoBehaviour
         rt.sizeDelta = new Vector2(650, 800);
         rt.localScale = Vector3.one * 0.001f;
 
-        // Background
         var bgObj = new GameObject("Background");
         bgObj.transform.SetParent(canvasObj.transform, false);
         var bgRect = bgObj.AddComponent<RectTransform>();
@@ -243,14 +219,13 @@ public class InfoPanel : MonoBehaviour
         var bgImage = bgObj.AddComponent<Image>();
         bgImage.color = new Color(0.05f, 0.05f, 0.05f, 0.85f);
 
-        // Title
         var titleObj = new GameObject("Title");
         titleObj.transform.SetParent(canvasObj.transform, false);
         _titleText = titleObj.AddComponent<Text>();
         _titleText.font = GetFont();
         _titleText.fontSize = titleFontSize;
         _titleText.fontStyle = FontStyle.Bold;
-        _titleText.color = new Color(0.345f, 0.8f, 0.008f); // BRACE green
+        _titleText.color = new Color(0.345f, 0.8f, 0.008f);
         _titleText.alignment = TextAnchor.MiddleCenter;
         var titleRect = _titleText.GetComponent<RectTransform>();
         titleRect.anchorMin = new Vector2(0, 0.88f);
@@ -258,7 +233,6 @@ public class InfoPanel : MonoBehaviour
         titleRect.offsetMin = new Vector2(20, 0);
         titleRect.offsetMax = new Vector2(-20, 0);
 
-        // Body
         var bodyObj = new GameObject("Body");
         bodyObj.transform.SetParent(canvasObj.transform, false);
         _bodyText = bodyObj.AddComponent<Text>();

@@ -4,7 +4,7 @@ using UnityEngine;
 /// <summary>
 /// Renders bounding boxes in world space for each tracked subject.
 /// Reads BraceResponse from BraceWebSocket each frame, creates/updates/removes boxes.
-/// Each box has a BoxCollider for controller raycast selection (Task 6).
+/// Auto-finds BraceWebSocket if not assigned in Inspector.
 /// </summary>
 public class BoundingBoxRenderer : MonoBehaviour
 {
@@ -27,35 +27,64 @@ public class BoundingBoxRenderer : MonoBehaviour
     private readonly List<string> _removeList = new();
     private Material _lineMaterial;
 
+    /// <summary>Current number of bounding boxes displayed (for debug HUD).</summary>
+    public int BoxCount => _boxes.Count;
+
     void Start()
     {
-        // Use the XR main camera
-        var rig = FindObjectOfType<OVRCameraRig>();
-        _cam = rig != null ? rig.centerEyeAnchor.GetComponent<Camera>() : Camera.main;
+        // Auto-find BraceWebSocket
+        if (braceWs == null)
+            braceWs = GetComponent<BraceWebSocket>();
+        if (braceWs == null)
+            braceWs = FindObjectOfType<BraceWebSocket>();
+        if (braceWs == null)
+            Debug.LogError("[BRACE] BoundingBoxRenderer: No BraceWebSocket found!");
 
-        _lineMaterial = new Material(Shader.Find("Sprites/Default"));
+        // Find XR camera
+        var rig = FindObjectOfType<OVRCameraRig>();
+        if (rig != null && rig.centerEyeAnchor != null)
+            _cam = rig.centerEyeAnchor.GetComponent<Camera>();
+        if (_cam == null)
+            _cam = Camera.main;
+        if (_cam == null)
+            Debug.LogError("[BRACE] BoundingBoxRenderer: No camera found!");
+
+        // Create line material — use URP Unlit if available, fall back to Sprites/Default
+        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null)
+            shader = Shader.Find("Sprites/Default");
+        if (shader == null)
+            shader = Shader.Find("Unlit/Color");
+
+        if (shader != null)
+        {
+            _lineMaterial = new Material(shader);
+            Debug.Log($"[BRACE] LineRenderer shader: {shader.name}");
+        }
+        else
+        {
+            Debug.LogError("[BRACE] No usable shader found for LineRenderer!");
+        }
     }
 
     void Update()
     {
-        if (braceWs == null || braceWs.LatestResponse == null) return;
+        if (braceWs == null || _cam == null) return;
+        if (braceWs.LatestResponse == null) return;
 
         var response = braceWs.LatestResponse;
         if (response.subjects == null) return;
 
-        // Track which subjects are still present
         _removeList.Clear();
         foreach (var key in _boxes.Keys)
             _removeList.Add(key);
 
-        // Update or create boxes
         foreach (var kvp in response.subjects)
         {
             _removeList.Remove(kvp.Key);
             UpdateOrCreateBox(kvp.Key, kvp.Value);
         }
 
-        // Remove stale boxes
         foreach (var key in _removeList)
         {
             Destroy(_boxes[key].root);
@@ -85,11 +114,11 @@ public class BoundingBoxRenderer : MonoBehaviour
         {
             box = CreateBox(subjectId);
             _boxes[subjectId] = box;
+            Debug.Log($"[BRACE] Created bounding box for subject {subjectId}");
         }
 
-        // --- Convert normalized bbox to world position ---
-        // BRACE: y1 = top, y2 = bottom (y=0 at top)
-        // Unity viewport: y=0 at bottom, y=1 at top → flip Y
+        // BRACE: y1=top, y2=bottom (y=0 at top)
+        // Unity viewport: y=0 at bottom → flip Y
         Vector3 viewMin = new Vector3(data.bbox.x1, 1f - data.bbox.y2, assumedDepth);
         Vector3 viewMax = new Vector3(data.bbox.x2, 1f - data.bbox.y1, assumedDepth);
 
@@ -100,10 +129,9 @@ public class BoundingBoxRenderer : MonoBehaviour
         Vector3 targetSize = new Vector3(
             Mathf.Abs(worldMax.x - worldMin.x),
             Mathf.Abs(worldMax.y - worldMin.y),
-            0.01f // thin depth for collider
+            0.01f
         );
 
-        // EMA smoothing
         if (box.initialized)
         {
             box.smoothCenter = Vector3.Lerp(box.smoothCenter, targetCenter, smoothAlpha);
@@ -111,27 +139,21 @@ public class BoundingBoxRenderer : MonoBehaviour
         }
         else
         {
-            // First frame — snap instantly
             box.smoothCenter = targetCenter;
             box.smoothSize = targetSize;
             box.initialized = true;
         }
 
-        // Apply position
         box.root.transform.position = box.smoothCenter;
 
-        // Face the camera
         Vector3 lookDir = box.smoothCenter - _cam.transform.position;
         if (lookDir.sqrMagnitude > 0.001f)
             box.root.transform.rotation = Quaternion.LookRotation(lookDir);
 
-        // Update rectangle outline
         UpdateLineRenderer(box.line, box.smoothSize);
 
-        // Update collider
         box.collider.size = new Vector3(box.smoothSize.x, box.smoothSize.y, 0.05f);
 
-        // Update color
         Color color;
         if (data.selected)
             color = selectedColor;
@@ -143,11 +165,9 @@ public class BoundingBoxRenderer : MonoBehaviour
         box.line.startColor = color;
         box.line.endColor = color;
 
-        // Update label text and position
         box.label.text = data.label ?? subjectId;
         box.label.transform.localPosition = new Vector3(0, box.smoothSize.y / 2f + 0.04f, 0);
 
-        // Store subject data for raycast selection
         box.subjectId = subjectId;
         box.latestData = data;
     }
@@ -157,29 +177,27 @@ public class BoundingBoxRenderer : MonoBehaviour
         var root = new GameObject($"BBox_{id}");
         var box = new SubjectBox { root = root };
 
-        // LineRenderer — rectangle outline (5 points, closed loop)
         var lr = root.AddComponent<LineRenderer>();
         lr.positionCount = 5;
         lr.startWidth = lineWidth;
         lr.endWidth = lineWidth;
         lr.useWorldSpace = false;
         lr.loop = false;
-        lr.material = new Material(_lineMaterial);
+        if (_lineMaterial != null)
+            lr.material = new Material(_lineMaterial);
         lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         lr.receiveShadows = false;
         box.line = lr;
 
-        // BoxCollider — trigger for controller raycast
         var col = root.AddComponent<BoxCollider>();
         col.isTrigger = true;
         col.size = Vector3.one * 0.3f;
         box.collider = col;
 
-        // SubjectBox component on the root so raycasts can find it
         var sbComp = root.AddComponent<SubjectBoxTag>();
         sbComp.box = box;
 
-        // Label — 3D TextMesh above the box
+        // Label
         var labelGo = new GameObject("Label");
         labelGo.transform.SetParent(root.transform, false);
         labelGo.transform.localPosition = new Vector3(0, 0.2f, 0);
@@ -190,14 +208,17 @@ public class BoundingBoxRenderer : MonoBehaviour
         tm.anchor = TextAnchor.LowerCenter;
         tm.alignment = TextAlignment.Center;
         tm.color = Color.white;
-        tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        if (tm.font == null)
-            tm.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
 
-        // TextMesh needs a MeshRenderer with the font material
-        var labelRenderer = labelGo.GetComponent<MeshRenderer>();
-        if (labelRenderer != null && tm.font != null)
-            labelRenderer.material = tm.font.material;
+        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (font == null)
+            font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        if (font != null)
+        {
+            tm.font = font;
+            var labelRenderer = labelGo.GetComponent<MeshRenderer>();
+            if (labelRenderer != null)
+                labelRenderer.material = font.material;
+        }
 
         box.label = tm;
         box.subjectId = id;
@@ -217,10 +238,7 @@ public class BoundingBoxRenderer : MonoBehaviour
     }
 }
 
-/// <summary>
-/// Per-subject bounding box state. Stored in the renderer's dictionary
-/// and referenced via SubjectBoxTag on the GameObject.
-/// </summary>
+/// <summary>Per-subject bounding box state.</summary>
 public class SubjectBox
 {
     public GameObject root;
@@ -235,10 +253,7 @@ public class SubjectBox
     public bool initialized;
 }
 
-/// <summary>
-/// Tiny MonoBehaviour on each bounding box GameObject so that
-/// Physics.Raycast hits can look up the SubjectBox data.
-/// </summary>
+/// <summary>Tag component so raycasts can find the SubjectBox data.</summary>
 public class SubjectBoxTag : MonoBehaviour
 {
     public SubjectBox box;

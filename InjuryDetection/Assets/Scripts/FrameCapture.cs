@@ -3,6 +3,7 @@ using UnityEngine;
 /// <summary>
 /// Captures Quest 3 passthrough camera frames as JPEG bytes.
 /// Downscales to 480p and feeds frames to BraceWebSocket at the throttled rate.
+/// Auto-finds BraceWebSocket if not assigned in Inspector.
 /// </summary>
 public class FrameCapture : MonoBehaviour
 {
@@ -17,14 +18,29 @@ public class FrameCapture : MonoBehaviour
     private Texture2D _captureTex;
     private Texture2D _scaledTex;
     private RenderTexture _rt;
-    private int _scaledW;
     private int _scaledH;
     private bool _ready;
+    private int _framesSent;
+
+    /// <summary>Camera device name (for debug HUD).</summary>
+    public string CameraName { get; private set; } = "none";
+
+    /// <summary>True if webcam is capturing.</summary>
+    public bool IsCapturing => _webcam != null && _webcam.isPlaying && _webcam.width > 32;
+
+    /// <summary>Total frames sent to server (for debug HUD).</summary>
+    public int FramesSent => _framesSent;
 
     void Start()
     {
+        // Auto-find BraceWebSocket
         if (braceWs == null)
             braceWs = GetComponent<BraceWebSocket>();
+        if (braceWs == null)
+            braceWs = FindObjectOfType<BraceWebSocket>();
+
+        if (braceWs == null)
+            Debug.LogError("[BRACE] FrameCapture: No BraceWebSocket found!");
 
         StartCamera();
     }
@@ -33,11 +49,15 @@ public class FrameCapture : MonoBehaviour
     {
         if (!_ready || braceWs == null) return;
         if (!braceWs.ReadyToSend()) return;
+        if (_webcam == null || !_webcam.isPlaying) return;
         if (!_webcam.didUpdateThisFrame) return;
 
         byte[] jpeg = CaptureJpeg();
         if (jpeg != null)
+        {
             braceWs.SendFrame(jpeg);
+            _framesSent++;
+        }
     }
 
     void OnDestroy()
@@ -62,11 +82,18 @@ public class FrameCapture : MonoBehaviour
     private void StartCamera()
     {
         WebCamDevice[] devices = WebCamTexture.devices;
+        Debug.Log($"[BRACE] Camera devices found: {devices.Length}");
+
         if (devices.Length == 0)
         {
-            Debug.LogWarning("[BRACE] No camera devices found");
+            Debug.LogWarning("[BRACE] No camera devices found!");
+            CameraName = "NOT FOUND";
             return;
         }
+
+        // Log all devices for debugging
+        for (int i = 0; i < devices.Length; i++)
+            Debug.Log($"[BRACE]   Camera[{i}]: \"{devices[i].name}\" front={devices[i].isFrontFacing}");
 
         // Prefer front-facing (Quest passthrough), fall back to first available
         string deviceName = devices[0].name;
@@ -79,14 +106,12 @@ public class FrameCapture : MonoBehaviour
             }
         }
 
+        CameraName = deviceName;
         Debug.Log($"[BRACE] Using camera: {deviceName}");
         _webcam = new WebCamTexture(deviceName, 1280, 960, 30);
         _webcam.Play();
 
-        // Compute scaled dimensions preserving aspect ratio
         _scaledH = targetHeight;
-        _scaledW = Mathf.RoundToInt((float)_webcam.requestedWidth / _webcam.requestedHeight * _scaledH);
-
         _ready = true;
     }
 
@@ -96,8 +121,6 @@ public class FrameCapture : MonoBehaviour
 
     private byte[] CaptureJpeg()
     {
-        if (_webcam == null || !_webcam.isPlaying) return null;
-
         int w = _webcam.width;
         int h = _webcam.height;
 
@@ -106,7 +129,10 @@ public class FrameCapture : MonoBehaviour
 
         // Read pixels from WebCamTexture
         if (_captureTex == null || _captureTex.width != w || _captureTex.height != h)
+        {
+            Debug.Log($"[BRACE] Camera resolution: {w}x{h}");
             _captureTex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+        }
 
         _captureTex.SetPixels32(_webcam.GetPixels32());
         _captureTex.Apply();
@@ -125,7 +151,6 @@ public class FrameCapture : MonoBehaviour
 
         Graphics.Blit(_captureTex, _rt);
 
-        // Read back scaled result
         if (_scaledTex == null || _scaledTex.width != outW || _scaledTex.height != outH)
         {
             if (_scaledTex != null) Destroy(_scaledTex);

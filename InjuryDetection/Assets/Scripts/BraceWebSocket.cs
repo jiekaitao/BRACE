@@ -7,22 +7,29 @@ using UnityEngine;
 /// <summary>
 /// Manages WebSocket connection to the BRACE server.
 /// Sends binary frames (8-byte LE timestamp + JPEG) and receives JSON analysis responses.
+/// Auto-reconnects on disconnect.
 /// </summary>
 public class BraceWebSocket : MonoBehaviour
 {
     [Header("Connection")]
-    [SerializeField] private string serverUrl = "wss://ws.braceml.com/ws/analyze?mode=webcam&client=vr";
+    [SerializeField] private string serverUrl = "ws://192.168.1.100:8001/ws/analyze?mode=webcam&client=vr";
 
     [Header("Frame Throttle")]
     [SerializeField] private int maxFps = 30;
     [SerializeField] private int maxInFlight = 5;
 
+    [Header("Reconnect")]
+    [SerializeField] private float reconnectDelay = 3f;
+
     private WebSocket _ws;
     private float _lastSendTime;
     private int _inFlight;
     private bool _connected;
+    private int _framesReceived;
+    private float _reconnectTimer;
+    private bool _shouldReconnect;
 
-    /// <summary>Latest parsed response from the server. Read by rendering components each frame.</summary>
+    /// <summary>Latest parsed response from the server.</summary>
     public BraceResponse LatestResponse { get; private set; }
 
     /// <summary>True when the WebSocket is open and ready to send.</summary>
@@ -31,39 +38,21 @@ public class BraceWebSocket : MonoBehaviour
     /// <summary>Number of frames awaiting server response.</summary>
     public int InFlight => _inFlight;
 
-    /// <summary>Minimum interval between frame sends, derived from maxFps.</summary>
+    /// <summary>Total frames received from server (for debug HUD).</summary>
+    public int FramesReceived => _framesReceived;
+
+    /// <summary>The URL we are connecting to (for debug HUD).</summary>
+    public string ServerUrl => serverUrl;
+
     private float SendInterval => 1f / maxFps;
 
     // ------------------------------------------------------------------
     // Lifecycle
     // ------------------------------------------------------------------
 
-    async void Start()
+    void Start()
     {
-        _ws = new WebSocket(serverUrl);
-
-        _ws.OnOpen += () =>
-        {
-            _connected = true;
-            _inFlight = 0;
-            Debug.Log("[BRACE] WebSocket connected");
-        };
-
-        _ws.OnClose += (code) =>
-        {
-            _connected = false;
-            Debug.Log($"[BRACE] WebSocket closed: {code}");
-        };
-
-        _ws.OnError += (err) =>
-        {
-            Debug.LogError($"[BRACE] WebSocket error: {err}");
-        };
-
-        _ws.OnMessage += OnMessage;
-
-        Debug.Log($"[BRACE] Connecting to {serverUrl}");
-        await _ws.Connect();
+        Connect();
     }
 
     void Update()
@@ -71,10 +60,23 @@ public class BraceWebSocket : MonoBehaviour
 #if !UNITY_WEBGL || UNITY_EDITOR
         _ws?.DispatchMessageQueue();
 #endif
+
+        // Auto-reconnect
+        if (_shouldReconnect && !_connected)
+        {
+            _reconnectTimer -= Time.deltaTime;
+            if (_reconnectTimer <= 0f)
+            {
+                _shouldReconnect = false;
+                Debug.Log("[BRACE] Reconnecting...");
+                Connect();
+            }
+        }
     }
 
     async void OnDestroy()
     {
+        _shouldReconnect = false;
         if (_ws != null)
         {
             _connected = false;
@@ -82,14 +84,60 @@ public class BraceWebSocket : MonoBehaviour
         }
     }
 
+    private async void Connect()
+    {
+        Debug.Log($"[BRACE] Connecting to {serverUrl}");
+
+        _ws = new WebSocket(serverUrl);
+
+        _ws.OnOpen += () =>
+        {
+            _connected = true;
+            _inFlight = 0;
+            _shouldReconnect = false;
+            Debug.Log("[BRACE] WebSocket CONNECTED");
+        };
+
+        _ws.OnClose += (code) =>
+        {
+            _connected = false;
+            Debug.Log($"[BRACE] WebSocket CLOSED: {code}");
+            ScheduleReconnect();
+        };
+
+        _ws.OnError += (err) =>
+        {
+            Debug.LogError($"[BRACE] WebSocket ERROR: {err}");
+            ScheduleReconnect();
+        };
+
+        _ws.OnMessage += OnMessage;
+
+        try
+        {
+            await _ws.Connect();
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[BRACE] Connect exception: {e.Message}");
+            ScheduleReconnect();
+        }
+    }
+
+    private void ScheduleReconnect()
+    {
+        if (!_shouldReconnect)
+        {
+            _shouldReconnect = true;
+            _reconnectTimer = reconnectDelay;
+            Debug.Log($"[BRACE] Will reconnect in {reconnectDelay}s");
+        }
+    }
+
     // ------------------------------------------------------------------
     // Sending frames
     // ------------------------------------------------------------------
 
-    /// <summary>
-    /// Returns true if enough time has passed and in-flight slots are available.
-    /// Call this before CaptureJpeg to avoid unnecessary work.
-    /// </summary>
     public bool ReadyToSend()
     {
         return _connected
@@ -97,15 +145,10 @@ public class BraceWebSocket : MonoBehaviour
             && _inFlight < maxInFlight;
     }
 
-    /// <summary>
-    /// Send a JPEG frame to the server for analysis.
-    /// Binary format: [8-byte float64 LE timestamp] + [JPEG bytes].
-    /// </summary>
     public async void SendFrame(byte[] jpeg)
     {
         if (!_connected || jpeg == null || jpeg.Length == 0) return;
 
-        // Pack timestamp (little-endian float64) + JPEG
         double videoTime = Time.timeAsDouble;
         byte[] timeBytes = BitConverter.GetBytes(videoTime);
         if (!BitConverter.IsLittleEndian)
@@ -130,13 +173,9 @@ public class BraceWebSocket : MonoBehaviour
     }
 
     // ------------------------------------------------------------------
-    // Subject selection (VR → server)
+    // Subject selection
     // ------------------------------------------------------------------
 
-    /// <summary>
-    /// Tell the server which subject to send detailed analysis for.
-    /// Pass null to deselect (all subjects get minimal data).
-    /// </summary>
     public async void SelectSubject(int? subjectId)
     {
         if (!_connected) return;
@@ -167,10 +206,11 @@ public class BraceWebSocket : MonoBehaviour
         try
         {
             LatestResponse = JsonConvert.DeserializeObject<BraceResponse>(json);
+            _framesReceived++;
         }
         catch (Exception e)
         {
-            Debug.LogWarning($"[BRACE] JSON parse error: {e.Message}");
+            Debug.LogWarning($"[BRACE] JSON parse error: {e.Message}\nFirst 200 chars: {json.Substring(0, Mathf.Min(200, json.Length))}");
         }
     }
 }

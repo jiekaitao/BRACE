@@ -16,3 +16,6 @@ The Passthrough Camera API requires specific Android API levels (32+), Vulkan gr
 
 ### Challenge: Latency Budget
 End-to-end latency (camera capture → network → GPU inference → response) is 130-260ms. This is acceptable for bounding box overlays but too high for precise skeleton-to-body alignment. We chose bounding boxes + floating stats panels rather than skeleton overlays for the VR visualization.
+
+### Challenge: Silent Failure Chain on Quest 3
+The VR pipeline has multiple stages (camera → JPEG → WebSocket → server → JSON → bounding boxes), and if any stage fails silently the user sees nothing but the controller beam with no indication of what's wrong. Root causes included: (1) `[SerializeField]` references defaulting to null when not manually wired in Inspector, (2) WebSocket connection failures producing no on-screen feedback, (3) `Shader.Find()` returning null for shaders not included in the Android build. We fixed this by adding `FindObjectOfType` auto-wiring as fallback for all component references, a shader fallback chain (URP Unlit → Sprites/Default → Unlit/Color), auto-reconnect on WebSocket disconnect, and a DebugHUD overlay that shows live pipeline status (WS connected/disconnected, camera capturing/waiting, frames sent/received, box count).

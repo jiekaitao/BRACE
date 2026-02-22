@@ -25,6 +25,10 @@ public class ControllerRaycast : MonoBehaviour
 
     private void Start()
     {
+        // Auto-find BraceWebSocket
+        if (braceWs == null)
+            braceWs = FindObjectOfType<BraceWebSocket>();
+
         _line = GetComponent<LineRenderer>();
         if (_line == null)
             _line = gameObject.AddComponent<LineRenderer>();
@@ -32,8 +36,19 @@ public class ControllerRaycast : MonoBehaviour
         _line.positionCount = 2;
         _line.startWidth = beamWidth;
         _line.endWidth = beamWidth * 0.5f;
-        _line.material = new Material(Shader.Find("Sprites/Default"));
-        _line.material.color = beamColor;
+
+        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null)
+            shader = Shader.Find("Sprites/Default");
+        if (shader == null)
+            shader = Shader.Find("Unlit/Color");
+
+        if (shader != null)
+        {
+            _line.material = new Material(shader);
+            _line.material.color = beamColor;
+        }
+
         _line.useWorldSpace = true;
     }
 
@@ -44,60 +59,47 @@ public class ControllerRaycast : MonoBehaviour
 
         bool hitSomething = Physics.Raycast(origin, direction, out RaycastHit hit, maxRayLength);
 
-        // Look for a SubjectBoxTag on the hit collider
         SubjectBox hitBox = null;
         if (hitSomething)
         {
             var tag = hit.collider.GetComponent<SubjectBoxTag>();
-            if (tag != null)
+            if (tag != null && tag.box != null)
                 hitBox = tag.box;
         }
 
-        // Update hover state
+        // Hover state
         if (hitBox != _hoveredBox)
         {
-            // Unhover previous
             if (_hoveredBox != null)
                 SetBoxLineWidth(_hoveredBox, normalLineWidth);
-
             _hoveredBox = hitBox;
-
-            // Hover new
             if (_hoveredBox != null)
                 SetBoxLineWidth(_hoveredBox, hoverLineWidth);
         }
 
-        // Update beam visual
+        // Beam visual
         Vector3 endPoint = hitSomething ? hit.point : origin + direction * maxRayLength;
         _line.SetPosition(0, origin);
         _line.SetPosition(1, endPoint);
-        _line.material.color = hitBox != null ? beamHitColor : beamColor;
+        if (_line.material != null)
+            _line.material.color = hitBox != null ? beamHitColor : beamColor;
 
-        // Handle trigger press
+        // Trigger press
         if (OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger))
         {
             if (hitBox != null)
             {
                 _selectedBox = hitBox;
-
-                // Tell the server to send detailed data for this subject
                 if (braceWs != null && int.TryParse(hitBox.subjectId, out int sid))
                     braceWs.SelectSubject(sid);
-
                 OnSubjectSelected?.Invoke(hitBox);
             }
-            else
+            else if (_selectedBox != null)
             {
-                // Pressed on empty space — deselect
-                if (_selectedBox != null)
-                {
-                    _selectedBox = null;
-
-                    if (braceWs != null)
-                        braceWs.SelectSubject(null);
-
-                    OnSubjectSelected?.Invoke(null);
-                }
+                _selectedBox = null;
+                if (braceWs != null)
+                    braceWs.SelectSubject(null);
+                OnSubjectSelected?.Invoke(null);
             }
         }
     }

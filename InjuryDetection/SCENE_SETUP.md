@@ -19,25 +19,13 @@ Opening the scene after this update will show missing script warnings for the de
 | **FrameCapture** | `Target Height`: 480, `JPEG Quality`: 65 |
 | **BraceWebSocket** | `Server Url`: `ws://<YOUR_SERVER_IP>:8001/ws/analyze?mode=webcam&client=vr` |
 | **BoundingBoxRenderer** | `Assumed Depth`: 3, `Smooth Alpha`: 0.3 |
+| **DebugHUD** | `Show HUD`: checked (shows live status overlay) |
 
-3. Wire the references in Inspector:
-   - **FrameCapture** → drag `BraceManager` itself into the `Brace Ws` slot (or leave empty — it auto-finds BraceWebSocket on the same GameObject)
-   - **BoundingBoxRenderer** → drag `BraceManager` into the `Brace Ws` slot
+3. **All references auto-wire** — every component uses `FindObjectOfType<BraceWebSocket>()` as fallback, so you do NOT need to manually drag references in Inspector. Just having them on the same GameObject is enough.
 
-## Step 3: Update ControllerRaycast
+## Step 3: Verify ControllerRaycast & InfoPanel
 
-The `ControllerRaycast` component is already on the right controller anchor inside `OVRCameraRig`.
-
-1. In Hierarchy, expand **OVRCameraRig → TrackingSpace → RightHandAnchor** (or whichever anchor has `ControllerRaycast`)
-2. In Inspector, the component now has a **Brace Ws** field — drag the `BraceManager` GameObject into it
-3. Update `Max Ray Length` to **20** (bounding boxes are further away than cubes were)
-
-## Step 4: Update InfoPanel
-
-The `InfoPanel` component is already on a child of `OVRCameraRig`.
-
-1. Find the GameObject with `InfoPanel` in the Hierarchy
-2. In Inspector, drag the `BraceManager` GameObject into the **Brace Ws** field
+These already exist in the scene from the original project. They now auto-find BraceWebSocket via `FindObjectOfType`, so **no manual wiring needed**.
 
 ## Step 5: Verify Passthrough
 
