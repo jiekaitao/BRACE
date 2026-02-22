@@ -519,36 +519,24 @@ class StreamingAnalyzer:
         }
 
     def run_umap_transform(self, feat: np.ndarray) -> dict[str, Any] | None:
-        """Project a single new point using existing UMAP fit."""
-        if self._umap_mapper is None:
+        """Find the nearest existing embedding point in feature space.
+
+        Instead of projecting a single point through UMAP (which is very noisy),
+        find the nearest existing feature and snap the current index to it.
+        """
+        if self._umap_mapper is None or not self._umap_embeddings:
             return None
 
         try:
-            point = self._umap_mapper.transform(feat.reshape(1, -1))
-            new_point = point[0].tolist()
-
-            # EMA smoothing to reduce jitter
-            if self._umap_embeddings:
-                alpha = 0.3
-                prev = self._umap_embeddings[-1]
-                new_point = [
-                    alpha * new_point[i] + (1 - alpha) * prev[i]
-                    for i in range(len(new_point))
-                ]
-
-            # Get cluster for this point
-            idx = len(self.features_list) - 1
-            seg = self._frame_to_segment.get(idx)
-            cid = seg.get("cluster") if seg else None
-
-            self._umap_embeddings.append(new_point)
-            self._umap_cluster_ids.append(cid)
+            # Compare against features that have embedding points
+            n_emb = len(self._umap_embeddings)
+            features = np.stack(self.features_list[:n_emb], axis=0)
+            distances = np.linalg.norm(features - feat.reshape(1, -1), axis=1)
+            nearest_idx = int(np.argmin(distances))
 
             return {
-                "type": "append",
-                "new_points": [new_point],
-                "new_cluster_ids": [cid],
-                "current_idx": len(self._umap_embeddings) - 1,
+                "type": "current_only",
+                "current_idx": nearest_idx,
             }
         except Exception:
             return None
