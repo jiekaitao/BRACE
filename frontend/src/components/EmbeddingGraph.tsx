@@ -47,6 +47,7 @@ function PointCloud({
   const currentRef = useRef<THREE.Mesh>(null);
   const ringRef = useRef<THREE.Mesh>(null);
   const pulseRef = useRef(0);
+  const targetPos = useMemo(() => new THREE.Vector3(), []);
 
   useFrame(() => {
     const mesh = meshRef.current;
@@ -153,14 +154,15 @@ function PointCloud({
 
       if (currentRef.current) {
         currentRef.current.visible = true;
-        currentRef.current.position.set(cx2, cy2, cz2);
+        targetPos.set(cx2, cy2, cz2);
+        currentRef.current.position.lerp(targetPos, 0.15);
         const mat = currentRef.current.material as THREE.MeshStandardMaterial;
         mat.color.copy(phaseColor);
       }
 
       if (ringRef.current) {
         ringRef.current.visible = true;
-        ringRef.current.position.set(cx2, cy2, cz2);
+        ringRef.current.position.lerp(targetPos, 0.15);
         pulseRef.current += 0.05;
         const pulse = Math.sin(pulseRef.current) * 0.3 + 0.7;
         ringRef.current.scale.setScalar(pulse);

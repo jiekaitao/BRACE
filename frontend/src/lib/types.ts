@@ -129,7 +129,7 @@ export interface VelocityState {
 
 /** UMAP embedding update from backend. */
 export interface EmbeddingUpdate {
-  type: "full" | "append";
+  type: "full" | "append" | "current_only";
   points?: [number, number, number][];
   new_points?: [number, number, number][];
   cluster_ids?: (number | null)[];

@@ -517,9 +517,13 @@ export function useAnalysisWebSocket(
                 clusterIds: eu.cluster_ids,
                 currentIdx: eu.current_idx,
               };
-            } else if (eu.type === "append" && eu.new_points && eu.new_cluster_ids) {
+            } else if (eu.type === "append" && eu.new_points && eu.new_cluster_ids && !replayingRef.current) {
+              // Only append during first pass to prevent point count drift
               state.embedding.points.push(...eu.new_points);
               state.embedding.clusterIds.push(...eu.new_cluster_ids);
+              state.embedding.currentIdx = eu.current_idx;
+            } else if (eu.type === "current_only" && eu.current_idx !== undefined) {
+              // Nearest-neighbor snap: just update which point is "current"
               state.embedding.currentIdx = eu.current_idx;
             }
           }

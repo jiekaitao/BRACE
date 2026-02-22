@@ -58,9 +58,12 @@ COCO_KEYPOINTS = [
 
 # Mapping from COCO index -> MediaPipe landmark index
 # All 14 feature joints + 4 SRP anchors are covered.
-# Face keypoints (nose, eyes, ears) are skipped — not needed for analysis or rendering.
-# Unmapped MediaPipe joints (face details, fingers, heels) get zeros.
+# Head keypoints (nose, ears) are included for head-tracking (concussion detection).
+# Unmapped MediaPipe joints (eyes, mouth, fingers, heels) get zeros.
 _COCO_TO_MP = {
+    0: 0,    # nose -> nose
+    3: 7,    # left_ear -> left_ear
+    4: 8,    # right_ear -> right_ear
     5: 11,   # left_shoulder -> left_shoulder
     6: 12,   # right_shoulder -> right_shoulder
     7: 13,   # left_elbow -> left_elbow
