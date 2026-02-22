@@ -888,7 +888,7 @@ async def ws_analyze(websocket: WebSocket):
     mode = websocket.query_params.get("mode", "webcam")
     session_id = websocket.query_params.get("session_id", "")
     cluster_threshold = float(websocket.query_params.get("cluster_threshold", "2.0"))
-    client_type = websocket.query_params.get("client", "web")  # "web" or "vr"
+    client_type = websocket.query_params.get("client", "web")  # "web", "ios", or "vr"
     fps_param = websocket.query_params.get("fps")
     target_fps = float(fps_param) if fps_param else 30.0
     user_id_param = websocket.query_params.get("user_id", "")

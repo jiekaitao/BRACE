@@ -4,7 +4,7 @@ import AVFoundation
 struct ContentView: View {
     @StateObject private var camera = CameraManager()
     @StateObject private var ws = BRACEWebSocket()
-    @AppStorage("serverURL") private var serverURL = "wss://ws.braceml.com/ws/analyze?mode=webcam&fps=240&client=web"
+    @AppStorage("serverURL") private var serverURL = "wss://ws.braceml.com/ws/analyze?mode=webcam&fps=240&client=ios"
     @State private var showSettings = false
     @State private var selectedJointIndex = 25 // L Knee default
 

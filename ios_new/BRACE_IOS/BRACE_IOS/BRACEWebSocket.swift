@@ -25,7 +25,7 @@ final class BRACEWebSocket: ObservableObject {
 
     // MARK: - Configuration
 
-    var serverURL: String = "wss://ws.braceml.com/ws/analyze?mode=webcam&fps=240&client=web" {
+    var serverURL: String = "wss://ws.braceml.com/ws/analyze?mode=webcam&fps=240&client=ios" {
         didSet { reconnect() }
     }
 
