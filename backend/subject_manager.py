@@ -79,6 +79,21 @@ class SubjectManager:
         self.analyzers[target_id].absorb(self.analyzers[source_id])
         del self.analyzers[source_id]
 
+    def merge_subject(self, from_id: int, to_id: int) -> None:
+        """Merge one subject into another by absorbing analyzers.
+
+        If either subject doesn't have an analyzer, this is a no-op.
+        After merge, from_id's analyzer is removed.
+
+        Args:
+            from_id: Subject ID to merge from (will be removed).
+            to_id: Subject ID to merge into (will absorb features).
+        """
+        if from_id not in self.analyzers or to_id not in self.analyzers:
+            return
+        self.analyzers[to_id].absorb(self.analyzers[from_id])
+        del self.analyzers[from_id]
+
     def get_active_track_ids(self) -> list[int]:
         """Return list of currently active track IDs."""
         return list(self.analyzers.keys())

@@ -46,6 +46,10 @@ class _IdentityGallery:
     proportions: ProportionAccumulator = field(default_factory=ProportionAccumulator)
     status: str = "unknown"  # "unknown" | "tentative" | "confirmed"
     gallery_size: int = 20
+    jersey_number: int | None = None
+    jersey_color: str | None = None
+    first_seen_frame: int = 0
+    total_frames: int = 0
 
     def add_embedding(self, emb: np.ndarray) -> None:
         self.embeddings.append(emb)
@@ -399,6 +403,7 @@ class IdentityResolver:
                     gallery = _IdentityGallery(
                         subject_id=subject_id,
                         gallery_size=self._gallery_size,
+                        first_seen_frame=self._frame_count,
                     )
                     self._galleries[subject_id] = gallery
 
@@ -437,6 +442,9 @@ class IdentityResolver:
                 pr.bbox_normalized, self._frame_count
             )
             current_active.add(subject_id)
+
+            # Increment per-subject frame counter
+            self._galleries[subject_id].total_frames += 1
 
             resolved.append(ResolvedPipelineResult(
                 pipeline_result=pr,
@@ -741,6 +749,146 @@ class IdentityResolver:
     def _make_label(subject_id: int, status: str) -> str:
         """Generate label: always S# (status is internal only)."""
         return f"S{subject_id}"
+
+    # ------------------------------------------------------------------
+    # Jersey-based identity resolution
+    # ------------------------------------------------------------------
+
+    def set_jersey(
+        self, subject_id: int, number: int | None = None, color: str | None = None
+    ) -> None:
+        """Set jersey information for a subject.
+
+        Args:
+            subject_id: The stable subject ID.
+            number: Jersey number (or None if not detected).
+            color: Jersey color string (or None).
+        """
+        gallery = self._galleries.get(subject_id)
+        if gallery is None:
+            return
+        if number is not None:
+            gallery.jersey_number = number
+        if color is not None:
+            gallery.jersey_color = color
+
+    def _match_by_jersey(
+        self,
+        number: int | None,
+        color: str | None,
+        skip: set[int] | None = None,
+    ) -> int | None:
+        """Try to match a jersey number+color to an existing gallery.
+
+        Matches by number first (required), then by color if available.
+
+        Args:
+            number: Jersey number to match.
+            color: Jersey color to match (optional, strengthens match).
+            skip: Set of subject_ids to skip.
+
+        Returns:
+            Matched subject_id or None.
+        """
+        if number is None:
+            return None
+
+        skip = skip or set()
+        candidates = []
+
+        for sid, gallery in self._galleries.items():
+            if sid in skip:
+                continue
+            if gallery.jersey_number == number:
+                candidates.append((sid, gallery))
+
+        if not candidates:
+            return None
+
+        # If color is provided, prefer matching color
+        if color is not None:
+            for sid, gallery in candidates:
+                if gallery.jersey_color == color:
+                    return sid
+
+        # Return first candidate by number alone
+        return candidates[0][0]
+
+    def merge_by_jersey(self) -> list[tuple[int, int]]:
+        """Merge subjects that share the same jersey number + color.
+
+        Finds all pairs of galleries with identical (number, color) where
+        number is not None, and merges the newer one into the older one.
+
+        Returns:
+            List of (from_id, to_id) pairs that were merged.
+        """
+        # Group by (number, color)
+        jersey_groups: dict[tuple[int, str | None], list[int]] = {}
+        for sid, gallery in self._galleries.items():
+            if gallery.jersey_number is None:
+                continue
+            key = (gallery.jersey_number, gallery.jersey_color)
+            jersey_groups.setdefault(key, []).append(sid)
+
+        merged: list[tuple[int, int]] = []
+        for key, sids in jersey_groups.items():
+            if len(sids) < 2:
+                continue
+            # Sort by first_seen_frame (keep oldest)
+            sids.sort(key=lambda s: self._galleries[s].first_seen_frame)
+            target = sids[0]
+            for source in sids[1:]:
+                # Merge source gallery into target
+                src_gallery = self._galleries[source]
+                tgt_gallery = self._galleries[target]
+
+                # Transfer embeddings
+                for emb in src_gallery.embeddings:
+                    tgt_gallery.add_embedding(emb)
+
+                # Update total frames
+                tgt_gallery.total_frames += src_gallery.total_frames
+
+                # Remap track->subject mappings
+                for tid, sid in list(self._track_to_subject.items()):
+                    if sid == source:
+                        self._track_to_subject[tid] = target
+
+                # Remove source gallery
+                del self._galleries[source]
+                self._active_subjects.discard(source)
+
+                merged.append((source, target))
+
+        return merged
+
+    def get_confirmed_subjects(
+        self, min_frames: int = 0
+    ) -> dict[int, dict]:
+        """Return info about all subjects, optionally filtering short-lived ones.
+
+        Args:
+            min_frames: Minimum total_frames to include (filters fragments).
+
+        Returns:
+            Dict of subject_id -> info dict with jersey/identity data.
+        """
+        result: dict[int, dict] = {}
+        for sid, gallery in self._galleries.items():
+            if gallery.total_frames < min_frames:
+                continue
+            result[sid] = {
+                "subject_id": sid,
+                "label": self._make_label(sid, gallery.status),
+                "status": gallery.status,
+                "jersey_number": gallery.jersey_number,
+                "jersey_color": gallery.jersey_color,
+                "total_frames": gallery.total_frames,
+                "first_seen_frame": gallery.first_seen_frame,
+                "gallery_consistency": gallery.gallery_consistency(),
+            }
+        return result
 
 
 def _bbox_iou(

@@ -20,8 +20,6 @@ import DelayedVideoCanvas from "@/components/DelayedVideoCanvas";
 import MovementQualityPanel from "@/components/MovementQualityPanel";
 import RiskSummaryCard from "@/components/RiskSummaryCard";
 import WorkoutTimeline from "@/components/WorkoutTimeline";
-import VoiceCoachingToggle from "@/components/VoiceCoachingToggle";
-import { useVoiceCoaching } from "@/hooks/useVoiceCoaching";
 
 function VideoControls({ videoRef, replaying }: { videoRef: React.RefObject<HTMLVideoElement | null>; replaying: boolean }) {
   const [paused, setPaused] = useState(false);
@@ -141,22 +139,6 @@ function AnalyzeContent() {
     equipmentRef,
   } = useAnalysisWebSocket(active, wsMode);
 
-  const { enabled: voiceEnabled, toggle: toggleVoice, speak } = useVoiceCoaching();
-
-  // Voice coaching: consume alert_text from selected subject
-  useEffect(() => {
-    if (!voiceEnabled || !active) return;
-    const interval = setInterval(() => {
-      const sel = selectedSubjectRef.current;
-      if (sel === null) return;
-      const subject = subjectsRef.current.get(sel);
-      if (subject?.alertText) {
-        speak(subject.alertText);
-        subject.alertText = null;
-      }
-    }, 200);
-    return () => clearInterval(interval);
-  }, [voiceEnabled, active, speak, subjectsRef, selectedSubjectRef]);
 
   // Build subject labels and identities maps from subjectsRef
   const subjectLabels = useMemo(() => {
@@ -491,9 +473,6 @@ function AnalyzeContent() {
         >
           Demo
         </DuoButton>
-        {active && (
-          <VoiceCoachingToggle enabled={voiceEnabled} onToggle={toggleVoice} />
-        )}
         {active && (
           <DuoButton
             variant={showDebug ? "blue" : "secondary"}

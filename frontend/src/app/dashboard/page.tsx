@@ -10,17 +10,28 @@ import GeminiResearchPanel from "@/components/GeminiResearchPanel";
 import AnimatedSkeletonDemo from "@/components/AnimatedSkeletonDemo";
 import DuoButton from "@/components/ui/DuoButton";
 import DemoVideoModal from "@/components/DemoVideoModal";
+import WorkoutListItem from "@/components/dashboard/WorkoutListItem";
+import TrendCharts from "@/components/dashboard/TrendCharts";
+import GuidelinesPanel from "@/components/dashboard/GuidelinesPanel";
+import { fetchWorkouts, type WorkoutSummary } from "@/lib/dashboard";
 
 export default function DashboardPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
   const [showDemoModal, setShowDemoModal] = useState(false);
+  const [workouts, setWorkouts] = useState<WorkoutSummary[]>([]);
 
   useEffect(() => {
     if (!loading && (!user || !user.injury_profile)) {
       router.replace("/onboarding?path=personal");
     }
   }, [loading, user, router]);
+
+  useEffect(() => {
+    if (user?.user_id) {
+      fetchWorkouts(user.user_id, 5).then(setWorkouts).catch(() => {});
+    }
+  }, [user]);
 
   if (loading) {
     return (
@@ -131,6 +142,28 @@ export default function DashboardPage() {
             Demo Videos
           </DuoButton>
         </div>
+      </div>
+
+      {/* Section D: Recent Workouts */}
+      <div className="w-full max-w-3xl mb-6">
+        <p className="text-xs font-bold text-[#3C3C3C] mb-3 uppercase tracking-wider">
+          Recent Workouts
+        </p>
+        {workouts.length === 0 ? (
+          <p className="text-xs text-[#AFAFAF]">No workouts yet. Start your first session above.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {workouts.map((w) => (
+              <WorkoutListItem key={w._id} workout={w} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Section E: Trends + Guidelines */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full max-w-3xl mb-6">
+        <TrendCharts userId={user.user_id} />
+        <GuidelinesPanel userId={user.user_id} />
       </div>
 
       {showDemoModal && (

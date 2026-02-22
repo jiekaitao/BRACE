@@ -80,7 +80,6 @@ export default function DevTimelinePage() {
     replayTimeline: mockTimeline,
     firstPassVelocityLen: 0,
     lastSeenTime: Date.now(),
-    alertText: null,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [mockTimeline]);
 

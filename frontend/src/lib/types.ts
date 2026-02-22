@@ -163,7 +163,6 @@ export interface SubjectData {
   fatigue_index?: number;
   peak_velocity?: number;
   quality?: FrameQuality;
-  alert_text?: string;
 }
 
 /** Gemini API usage statistics from backend. */
@@ -235,8 +234,6 @@ export interface SubjectState {
   clusterRepresentatives: Record<string, ([number, number] | [number, number, number])[][]>;
   /** Per-frame movement quality metrics. */
   quality: FrameQuality;
-  /** Pending voice alert text from backend. Consumed by voice coaching hook. */
-  alertText: string | null;
   /** Cached analysis snapshots for replay on video loop, indexed by video_time. */
   replayTimeline: ReplaySnapshot[];
   /** Number of velocity samples recorded during first pass (used during replay). */
@@ -405,3 +402,60 @@ export interface RiskModifiers {
   angular_velocity_scale: number;
   monitor_joints: string[];
 }
+
+// ---------------------------------------------------------------------------
+// Basketball / Game Analysis Types
+// ---------------------------------------------------------------------------
+
+/** Risk status for a player during game analysis. */
+export type PlayerRiskStatus = "GREEN" | "YELLOW" | "RED";
+
+/** Player info from game analysis. */
+export interface GamePlayerInfo {
+  subject_id: number;
+  label: string;
+  jersey_number?: number | null;
+  jersey_color?: string | null;
+  risk_status: PlayerRiskStatus;
+  total_frames: number;
+  injury_events: InjuryRisk[];
+  workload: {
+    total_frames: number;
+    active_seconds: number;
+    high_intensity_seconds: number;
+    rest_seconds: number;
+    intensity_ratio: number;
+    fatigue_estimate: number;
+  };
+}
+
+/** Game processing progress message from WebSocket. */
+export interface GameProgressMessage {
+  type: "progress";
+  progress: number;
+  data: {
+    frame_index: number;
+    total_frames: number;
+    player_count: number;
+    video_time: number;
+  };
+}
+
+/** Game complete message from WebSocket. */
+export interface GameCompleteMessage {
+  type: "complete";
+  data: {
+    game_id: string;
+    status: string;
+    total_frames: number;
+    duration_sec: number;
+    player_count: number;
+    players: Record<string, GamePlayerInfo>;
+  };
+}
+
+/** Union of game WebSocket messages. */
+export type GameWsMessage =
+  | GameProgressMessage
+  | GameCompleteMessage
+  | { type: "heartbeat" };

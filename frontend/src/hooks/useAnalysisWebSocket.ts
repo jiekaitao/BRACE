@@ -403,7 +403,6 @@ export function useAnalysisWebSocket(
               smplFrame: { ...EMPTY_SMPL_FRAME },
               uvTexture: null,
               quality: {},
-              alertText: null,
               replayTimeline: [],
               firstPassVelocityLen: 0,
               lastSeenTime: performance.now(),
@@ -491,10 +490,6 @@ export function useAnalysisWebSocket(
             };
           }
 
-          // Store voice alert text for voice coaching
-          if (subjectData.alert_text) {
-            state.alertText = subjectData.alert_text;
-          }
 
           // Record replay timeline during first pass
           const vt = frame.video_time ?? 0;

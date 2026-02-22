@@ -1,6 +1,6 @@
 "use client";
 
-import { HTMLAttributes, useState } from "react";
+import { HTMLAttributes, useState, useCallback } from "react";
 
 interface PathCardProps extends HTMLAttributes<HTMLDivElement> {
   image?: string;
@@ -18,6 +18,11 @@ export default function PathCard({
   ...props
 }: PathCardProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
+
+  // Use ref callback to catch already-cached images (onLoad won't fire for those)
+  const imgRef = useCallback((img: HTMLImageElement | null) => {
+    if (img?.complete && img.naturalWidth > 0) setImageLoaded(true);
+  }, []);
 
   return (
     <div
@@ -37,6 +42,7 @@ export default function PathCard({
       {/* Background image with fade-in on load + grayscale -> color on hover */}
       {image && (
         <img
+          ref={imgRef}
           src={image}
           alt=""
           onLoad={() => setImageLoaded(true)}
