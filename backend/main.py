@@ -904,6 +904,15 @@ def _build_vr_response(
     }
 
 
+async def _run_analysis_bg(analyzer: "StreamingAnalyzer", subject_id: str) -> None:
+    """Run segmentation/clustering analysis in background thread."""
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(None, analyzer.run_analysis)
+    finally:
+        analyzer._analysis_pending = False
+
+
 async def _handle_webcam_mode(
     websocket: WebSocket, cluster_threshold: float, target_fps: float,
     risk_modifiers: Any = None, client_type: str = "web",

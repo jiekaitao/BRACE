@@ -8,13 +8,24 @@
 		}
 	}
 
+	# For Tailscale/dev: route WebSocket and API paths to backend
+	@backendpaths {
+		host baby-gator.tailea0e34.ts.net
+		path /ws/* /api/*
+	}
+	handle @backendpaths {
+		reverse_proxy backend:8000 backend-cpu:8000 {
+			lb_policy first
+		}
+	}
+
 	@frontend host braceml.com baby-gator.tailea0e34.ts.net
 	handle @frontend {
-		reverse_proxy frontend:3000
+		reverse_proxy host.docker.internal:3000
 	}
 
 	# Fallback: send everything else to frontend
 	handle {
-		reverse_proxy frontend:3000
+		reverse_proxy host.docker.internal:3000
 	}
 }

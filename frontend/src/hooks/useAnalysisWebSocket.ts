@@ -187,9 +187,10 @@ export function useAnalysisWebSocket(
 
   // Send a single frame as binary blob with 8-byte Float64 video timestamp prefix
   const sendFrame = useCallback(() => {
-    const webcamOverWebSocket = mode === "webcam" && iOSWebSocketCaptureRef.current;
-    if (mode === "webcam" && !webcamOverWebSocket) return; // WebRTC mode uses native video track
     const video = videoRef.current;
+    const hasSrcObject = video?.srcObject instanceof MediaStream;
+    const webcamOverWebSocket = mode === "webcam" && (iOSWebSocketCaptureRef.current || !hasSrcObject);
+    if (mode === "webcam" && !webcamOverWebSocket) return; // WebRTC mode uses native video track
     const ws = wsRef.current;
     if (!video || !ws || ws.readyState !== WebSocket.OPEN) return;
     if (video.paused || video.ended || !video.videoWidth) return;
@@ -645,7 +646,11 @@ export function useAnalysisWebSocket(
         } else {
           if (!videoElement) return;
           const stream = videoElement.srcObject as MediaStream;
-          if (!stream) return;
+          if (!stream) {
+            // Demo video — no MediaStream, use WebSocket with canvas capture
+            openWs(getWsUrl(), true);
+            return;
+          }
 
           pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
           stream.getTracks().forEach((track) => pc!.addTrack(track, stream));

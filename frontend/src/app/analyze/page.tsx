@@ -93,22 +93,28 @@ function AnalyzeContent() {
 
   const initialMode = paramMode === "upload" ? "video" : "webcam";
 
-  // Build initial demo URL if navigated with ?mode=demo&video=filename
-  const initialDemoUrl = paramMode === "demo" && paramVideo
-    ? `${getApiBase()}/api/demo-videos/${encodeURIComponent(paramVideo)}`
-    : null;
+  // Build demo URL only on the client to avoid SSR hydration mismatch
+  // (getApiBase() returns localhost during SSR but the real hostname on client)
+  const isDemoMode = paramMode === "demo" && !!paramVideo;
 
   const [mode, setMode] = useState<"webcam" | "video">(
     paramMode === "demo" ? "webcam" : initialMode === "video" ? "video" : "webcam"
   );
-  const [active, setActive] = useState(mode === "webcam" || !!initialDemoUrl);
+  const [active, setActive] = useState(mode === "webcam" || isDemoMode);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [showDemoModal, setShowDemoModal] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
-  const [demoVideoUrl, setDemoVideoUrl] = useState<string | null>(initialDemoUrl);
+  const [demoVideoUrl, setDemoVideoUrl] = useState<string | null>(null);
   const videoPlaybackRef = useRef<HTMLVideoElement>(null);
   const demoVideoRef = useRef<HTMLVideoElement>(null);
+
+  // Set demo URL on client mount (avoids SSR hydration mismatch)
+  useEffect(() => {
+    if (paramMode === "demo" && paramVideo) {
+      setDemoVideoUrl(`${getApiBase()}/api/demo-videos/${encodeURIComponent(paramVideo)}`);
+    }
+  }, [paramMode, paramVideo]);
 
   // Demo mode uses "webcam" WebSocket mode (frame-by-frame streaming)
   const wsMode = demoVideoUrl ? "webcam" : mode;
@@ -207,14 +213,21 @@ function AnalyzeContent() {
     [stopCapture, videoUrl]
   );
 
-  // When demo video element loads, start frame capture and ensure playback
-  const onDemoVideoReady = useCallback(() => {
-    if (demoVideoRef.current) {
-      startCapture(demoVideoRef.current);
-      // Explicitly play — autoPlay attribute alone can fail in some contexts
-      demoVideoRef.current.play().catch(() => { });
+  // Ref callback: start capture as soon as demo video element mounts.
+  // Opens WebSocket immediately; frame sending is gated by video.videoWidth > 0.
+  const demoVideoRefCallback = useCallback((el: HTMLVideoElement | null) => {
+    demoVideoRef.current = el;
+    if (el) {
+      startCapture(el);
     }
   }, [startCapture]);
+
+  // When demo video can play, start playback
+  const onDemoVideoReady = useCallback(() => {
+    if (demoVideoRef.current) {
+      demoVideoRef.current.play().catch(() => { });
+    }
+  }, []);
 
   // Mode switch
   const switchMode = useCallback(
@@ -276,7 +289,7 @@ function AnalyzeContent() {
               </div>
 
               {/* Webcam mode (not demo) */}
-              {mode === "webcam" && active && !isDemo && (
+              {mode === "webcam" && active && !isDemo && !isDemoMode && (
                 <CameraFeed onVideoReady={onCameraReady} mirrored />
               )}
 
@@ -286,10 +299,9 @@ function AnalyzeContent() {
               {isDemo && active && (
                 <>
                   <video
-                    ref={demoVideoRef}
+                    ref={demoVideoRefCallback}
                     src={demoVideoUrl}
                     className="w-full h-full object-contain"
-                    crossOrigin="anonymous"
                     playsInline
                     muted
                     autoPlay
