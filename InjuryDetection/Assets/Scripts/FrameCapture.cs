@@ -6,11 +6,14 @@ using UnityEngine.Android;
 /// <summary>
 /// Captures Quest 3 passthrough camera frames as JPEG bytes.
 /// Downscales to 480p and feeds frames to BraceWebSocket at the throttled rate.
-/// Handles camera rotation/mirror correction for proper YOLO detection.
+/// Handles HorizonOS camera permission, rotation/mirror correction, and camera cycling.
 /// Auto-finds BraceWebSocket if not assigned in Inspector.
 /// </summary>
 public class FrameCapture : MonoBehaviour
 {
+    // HorizonOS permission required for Quest headset cameras
+    private const string HEADSET_CAMERA_PERM = "horizonos.permission.HEADSET_CAMERA";
+
     [Header("References")]
     [SerializeField] private BraceWebSocket braceWs;
 
@@ -18,12 +21,14 @@ public class FrameCapture : MonoBehaviour
     [SerializeField] private int targetHeight = 480;
     [SerializeField] [Range(1, 100)] private int jpegQuality = 65;
 
+    [Header("Black Frame Detection")]
+    [Tooltip("If brightness stays below this for blackFrameThreshold frames, try next camera")]
+    [SerializeField] private int blackFrameLimit = 60;
+
     private WebCamTexture _webcam;
     private Texture2D _captureTex;
     private Texture2D _scaledTex;
     private RenderTexture _rt;
-    private RenderTexture _correctedRt; // for rotation/mirror correction
-    private Material _correctionMat;     // shader material for UV transform
     private int _scaledH;
     private bool _ready;
     private int _framesSent;
@@ -31,6 +36,11 @@ public class FrameCapture : MonoBehaviour
     private float _avgBrightness;
     private int _nonBlackPixels;
     private int _totalSampled;
+    private int _blackFrameCount;
+    private int _currentCameraIndex;
+    private int _totalCameras;
+    private bool _triedAllCameras;
+    private string _permissionStatus = "unknown";
 
     /// <summary>Camera device name (for debug HUD).</summary>
     public string CameraName { get; private set; } = "none";
@@ -58,6 +68,12 @@ public class FrameCapture : MonoBehaviour
 
     /// <summary>Camera resolution string (for debug HUD).</summary>
     public string Resolution => _webcam != null && _webcam.width > 32 ? $"{_webcam.width}x{_webcam.height}" : "N/A";
+
+    /// <summary>Permission status (for debug HUD).</summary>
+    public string PermissionStatus => _permissionStatus;
+
+    /// <summary>Current camera index / total (for debug HUD).</summary>
+    public string CameraIndex => $"{_currentCameraIndex}/{_totalCameras}";
 
     void Start()
     {
@@ -93,6 +109,17 @@ public class FrameCapture : MonoBehaviour
             braceWs.SendFrame(jpeg);
             _framesSent++;
         }
+
+        // Auto-cycle camera if getting black frames
+        if (!_triedAllCameras && _avgBrightness < 2f && _framesSent > 5)
+        {
+            _blackFrameCount++;
+            if (_blackFrameCount >= blackFrameLimit)
+            {
+                Debug.LogWarning($"[BRACE] Camera {_currentCameraIndex} producing black frames after {_blackFrameCount} frames, trying next...");
+                TryNextCamera();
+            }
+        }
     }
 
     void OnDestroy()
@@ -103,20 +130,11 @@ public class FrameCapture : MonoBehaviour
         if (_rt != null)
             RenderTexture.ReleaseTemporary(_rt);
 
-        if (_correctedRt != null)
-        {
-            RenderTexture.ReleaseTemporary(_correctedRt);
-            _correctedRt = null;
-        }
-
         if (_scaledTex != null)
             Destroy(_scaledTex);
 
         if (_captureTex != null)
             Destroy(_captureTex);
-
-        if (_correctionMat != null)
-            Destroy(_correctionMat);
     }
 
     // ------------------------------------------------------------------
@@ -126,37 +144,97 @@ public class FrameCapture : MonoBehaviour
     private void RequestCameraPermissionAndStart()
     {
 #if UNITY_ANDROID && !UNITY_EDITOR
-        // Quest 3 (Android 12+) requires runtime permission for headset camera
-        if (!Permission.HasUserAuthorizedPermission(Permission.Camera))
+        // Quest 3 requires horizonos.permission.HEADSET_CAMERA (NOT android.permission.CAMERA)
+        bool hasHeadsetPerm = Permission.HasUserAuthorizedPermission(HEADSET_CAMERA_PERM);
+        bool hasAndroidPerm = Permission.HasUserAuthorizedPermission(Permission.Camera);
+
+        Debug.Log($"[BRACE] Permission check: HEADSET_CAMERA={hasHeadsetPerm}, android.CAMERA={hasAndroidPerm}");
+
+        if (!hasHeadsetPerm)
         {
-            Debug.Log("[BRACE] Requesting camera permission...");
+            _permissionStatus = "requesting";
+            Debug.Log("[BRACE] Requesting horizonos.permission.HEADSET_CAMERA...");
+
             var callbacks = new PermissionCallbacks();
             callbacks.PermissionGranted += (perm) =>
             {
                 Debug.Log($"[BRACE] Permission granted: {perm}");
+                _permissionStatus = "granted";
+                // Also request android.permission.CAMERA as fallback
+                if (!Permission.HasUserAuthorizedPermission(Permission.Camera))
+                {
+                    Permission.RequestUserPermission(Permission.Camera);
+                }
                 StartCamera();
             };
             callbacks.PermissionDenied += (perm) =>
             {
-                Debug.LogError($"[BRACE] Permission DENIED: {perm}");
-                CameraName = "PERM DENIED";
+                Debug.LogWarning($"[BRACE] Permission denied: {perm}, trying android.permission.CAMERA...");
+                _permissionStatus = "headset_denied";
+                // Fall back to standard Android camera permission
+                RequestAndroidCameraPermission();
             };
             callbacks.PermissionDeniedAndDontAskAgain += (perm) =>
             {
-                Debug.LogError($"[BRACE] Permission DENIED permanently: {perm}");
-                CameraName = "PERM DENIED";
+                Debug.LogWarning($"[BRACE] Permission denied permanently: {perm}, trying android.permission.CAMERA...");
+                _permissionStatus = "headset_denied";
+                RequestAndroidCameraPermission();
             };
-            Permission.RequestUserPermission(Permission.Camera, callbacks);
+            Permission.RequestUserPermission(HEADSET_CAMERA_PERM, callbacks);
             return;
         }
-        Debug.Log("[BRACE] Camera permission already granted");
+
+        _permissionStatus = "granted";
+        Debug.Log("[BRACE] HEADSET_CAMERA permission already granted");
+
+        // Ensure android.permission.CAMERA is also granted
+        if (!hasAndroidPerm)
+        {
+            Permission.RequestUserPermission(Permission.Camera);
+        }
+#else
+        _permissionStatus = "editor";
 #endif
         StartCamera();
     }
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+    private void RequestAndroidCameraPermission()
+    {
+        if (Permission.HasUserAuthorizedPermission(Permission.Camera))
+        {
+            _permissionStatus = "android_only";
+            StartCamera();
+            return;
+        }
+
+        var callbacks = new PermissionCallbacks();
+        callbacks.PermissionGranted += (perm) =>
+        {
+            Debug.Log($"[BRACE] Android camera permission granted: {perm}");
+            _permissionStatus = "android_only";
+            StartCamera();
+        };
+        callbacks.PermissionDenied += (perm) =>
+        {
+            Debug.LogError($"[BRACE] All camera permissions DENIED");
+            _permissionStatus = "ALL DENIED";
+            CameraName = "PERM DENIED";
+        };
+        callbacks.PermissionDeniedAndDontAskAgain += (perm) =>
+        {
+            Debug.LogError($"[BRACE] All camera permissions DENIED permanently");
+            _permissionStatus = "ALL DENIED";
+            CameraName = "PERM DENIED";
+        };
+        Permission.RequestUserPermission(Permission.Camera, callbacks);
+    }
+#endif
+
     private void StartCamera()
     {
         WebCamDevice[] devices = WebCamTexture.devices;
+        _totalCameras = devices.Length;
         Debug.Log($"[BRACE] Camera devices found: {devices.Length}");
 
         if (devices.Length == 0)
@@ -168,26 +246,53 @@ public class FrameCapture : MonoBehaviour
 
         // Log all devices for debugging
         for (int i = 0; i < devices.Length; i++)
-            Debug.Log($"[BRACE]   Camera[{i}]: \"{devices[i].name}\" front={devices[i].isFrontFacing}");
+            Debug.Log($"[BRACE]   Camera[{i}]: \"{devices[i].name}\" front={devices[i].isFrontFacing} available={devices[i].availableResolutions?.Length ?? -1}");
 
-        // Prefer front-facing (Quest passthrough), fall back to first available
-        string deviceName = devices[0].name;
-        foreach (var device in devices)
+        StartCameraAtIndex(_currentCameraIndex);
+    }
+
+    private void StartCameraAtIndex(int index)
+    {
+        WebCamDevice[] devices = WebCamTexture.devices;
+        if (index >= devices.Length)
         {
-            if (device.isFrontFacing)
-            {
-                deviceName = device.name;
-                break;
-            }
+            Debug.LogError("[BRACE] No more cameras to try!");
+            _triedAllCameras = true;
+            return;
         }
 
+        // Stop previous camera if any
+        if (_webcam != null && _webcam.isPlaying)
+            _webcam.Stop();
+
+        _currentCameraIndex = index;
+        string deviceName = devices[index].name;
         CameraName = deviceName;
-        Debug.Log($"[BRACE] Using camera: {deviceName}");
+        _cameraInfoLogged = false;
+        _blackFrameCount = 0;
+        _framesSent = 0;
+
+        Debug.Log($"[BRACE] Starting camera[{index}]: \"{deviceName}\" front={devices[index].isFrontFacing}");
         _webcam = new WebCamTexture(deviceName, 1280, 960, 30);
         _webcam.Play();
 
+        // Reset textures for new camera
+        if (_captureTex != null) { Destroy(_captureTex); _captureTex = null; }
+
         _scaledH = targetHeight;
         _ready = true;
+    }
+
+    private void TryNextCamera()
+    {
+        int next = _currentCameraIndex + 1;
+        if (next >= _totalCameras)
+        {
+            Debug.LogError("[BRACE] Tried all cameras — none producing image data. Check camera permissions in Quest Settings.");
+            _triedAllCameras = true;
+            return;
+        }
+        StartCameraAtIndex(next);
     }
 
     // ------------------------------------------------------------------
@@ -234,70 +339,12 @@ public class FrameCapture : MonoBehaviour
         bool mirrored = _webcam.videoVerticallyMirrored;
         bool swapDims = (angle == 90 || angle == 270);
 
-        // Source dimensions after rotation
         int srcW = swapDims ? h : w;
         int srcH = swapDims ? w : h;
-
-        // Downscale target
         int outH = _scaledH;
         int outW = Mathf.RoundToInt((float)srcW / srcH * outH);
 
-        // Step 1: Blit capture texture to a corrected RT with rotation/mirror
-        if (_correctedRt != null && (_correctedRt.width != srcW || _correctedRt.height != srcH))
-        {
-            RenderTexture.ReleaseTemporary(_correctedRt);
-            _correctedRt = null;
-        }
-        if (_correctedRt == null)
-            _correctedRt = RenderTexture.GetTemporary(srcW, srcH, 0, RenderTextureFormat.ARGB32);
-
-        // Build UV transform matrix for rotation + mirror correction
-        if (angle != 0 || mirrored)
-        {
-            if (_correctionMat == null)
-            {
-                Shader shader = Shader.Find("Hidden/BlitCopy");
-                if (shader == null) shader = Shader.Find("Unlit/Texture");
-                _correctionMat = new Material(shader);
-            }
-
-            // Compute UV transform: rotate around (0.5, 0.5), then optionally mirror Y
-            Matrix4x4 uvMatrix = GetUVTransform(angle, mirrored);
-
-            // Use GPU to transform
-            RenderTexture prev = RenderTexture.active;
-            RenderTexture.active = _correctedRt;
-            GL.Clear(true, true, Color.black);
-
-            GL.PushMatrix();
-            GL.LoadOrtho();
-
-            _correctionMat.mainTexture = _captureTex;
-            _correctionMat.SetPass(0);
-
-            // Draw a quad with transformed UVs
-            GL.Begin(GL.QUADS);
-            Vector4 bl = uvMatrix * new Vector4(0, 0, 0, 1);
-            Vector4 br = uvMatrix * new Vector4(1, 0, 0, 1);
-            Vector4 tr = uvMatrix * new Vector4(1, 1, 0, 1);
-            Vector4 tl = uvMatrix * new Vector4(0, 1, 0, 1);
-
-            GL.TexCoord2(bl.x, bl.y); GL.Vertex3(0, 0, 0);
-            GL.TexCoord2(br.x, br.y); GL.Vertex3(1, 0, 0);
-            GL.TexCoord2(tr.x, tr.y); GL.Vertex3(1, 1, 0);
-            GL.TexCoord2(tl.x, tl.y); GL.Vertex3(0, 1, 0);
-            GL.End();
-
-            GL.PopMatrix();
-            RenderTexture.active = prev;
-        }
-        else
-        {
-            // No correction needed — just blit directly
-            Graphics.Blit(_captureTex, _correctedRt);
-        }
-
-        // Step 2: Downscale corrected RT to output size
+        // Downscale via GPU blit (rotation is 0 and mirror is false on Quest, so just blit)
         if (_rt != null && (_rt.width != outW || _rt.height != outH))
         {
             RenderTexture.ReleaseTemporary(_rt);
@@ -306,7 +353,7 @@ public class FrameCapture : MonoBehaviour
         if (_rt == null)
             _rt = RenderTexture.GetTemporary(outW, outH, 0, RenderTextureFormat.ARGB32);
 
-        Graphics.Blit(_correctedRt, _rt);
+        Graphics.Blit(_captureTex, _rt);
 
         if (_scaledTex == null || _scaledTex.width != outW || _scaledTex.height != outH)
         {
@@ -314,44 +361,12 @@ public class FrameCapture : MonoBehaviour
             _scaledTex = new Texture2D(outW, outH, TextureFormat.RGB24, false);
         }
 
-        RenderTexture prev2 = RenderTexture.active;
+        RenderTexture prev = RenderTexture.active;
         RenderTexture.active = _rt;
         _scaledTex.ReadPixels(new Rect(0, 0, outW, outH), 0, 0);
         _scaledTex.Apply();
-        RenderTexture.active = prev2;
+        RenderTexture.active = prev;
 
         return _scaledTex.EncodeToJPG(jpegQuality);
-    }
-
-    /// <summary>
-    /// Build a UV transform matrix that rotates around (0.5, 0.5) by the given angle
-    /// and optionally mirrors vertically. This ensures the output JPEG has people upright.
-    /// </summary>
-    private static Matrix4x4 GetUVTransform(int angleDeg, bool mirrorY)
-    {
-        // Translate to origin, rotate, translate back
-        Matrix4x4 toOrigin = Matrix4x4.Translate(new Vector3(-0.5f, -0.5f, 0));
-        Matrix4x4 fromOrigin = Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
-
-        // Rotation (counterclockwise to undo camera rotation)
-        float rad = -angleDeg * Mathf.Deg2Rad;
-        float cos = Mathf.Cos(rad);
-        float sin = Mathf.Sin(rad);
-        Matrix4x4 rot = Matrix4x4.identity;
-        rot.m00 = cos;  rot.m01 = -sin;
-        rot.m10 = sin;  rot.m11 = cos;
-
-        Matrix4x4 result = fromOrigin * rot * toOrigin;
-
-        if (mirrorY)
-        {
-            // Flip Y: v → 1 - v
-            Matrix4x4 flip = Matrix4x4.identity;
-            flip.m11 = -1f;
-            flip.m13 = 1f;
-            result = flip * result;
-        }
-
-        return result;
     }
 }

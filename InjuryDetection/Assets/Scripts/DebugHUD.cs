@@ -113,9 +113,9 @@ public class DebugHUD : MonoBehaviour
         if (frameCapture != null)
         {
             string camStatus = frameCapture.IsCapturing ? "<color=#00ff00>CAPTURING</color>" : "<color=#ffcc00>WAITING</color>";
-            sb.AppendLine($"Cam: {camStatus} ({frameCapture.CameraName})");
-            sb.AppendLine($"Res: {frameCapture.Resolution}  Rot: {frameCapture.RotationAngle}° Mirror: {frameCapture.IsMirrored}");
-            sb.AppendLine($"Sent: {frameCapture.FramesSent}");
+            sb.AppendLine($"Cam: {camStatus} [{frameCapture.CameraIndex}] ({frameCapture.CameraName})");
+            sb.AppendLine($"Perm: {frameCapture.PermissionStatus}  Res: {frameCapture.Resolution}");
+            sb.AppendLine($"Sent: {frameCapture.FramesSent}  Rot: {frameCapture.RotationAngle}° Mirror: {frameCapture.IsMirrored}");
 
             // Brightness diagnostic — detect black frames
             float bright = frameCapture.AvgBrightness;
@@ -125,13 +125,13 @@ public class DebugHUD : MonoBehaviour
                 sb.AppendLine($"Brightness: <color={brightColor}>{bright:F0}</color>/255  NonBlack: {frameCapture.NonBlackPixels}/{frameCapture.TotalSampled}");
 
                 if (bright < 5f)
-                    sb.AppendLine("<color=#ff3333>FRAMES ARE BLACK! Camera not providing image data</color>");
+                    sb.AppendLine("<color=#ff3333>FRAMES ARE BLACK!</color>");
             }
 
             if (!frameCapture.IsCapturing && frameCapture.CameraName == "NOT FOUND")
                 sb.AppendLine("<color=#ffcc00>No camera - check permissions</color>");
             else if (!frameCapture.IsCapturing && frameCapture.CameraName == "PERM DENIED")
-                sb.AppendLine("<color=#ff3333>Camera permission denied!</color>");
+                sb.AppendLine("<color=#ff3333>Camera permission denied! Go to Quest Settings > Apps > InjuryDetection > Permissions</color>");
             else if (!frameCapture.IsCapturing && frameCapture.CameraName == "none")
                 sb.AppendLine("<color=#ffcc00>Camera not initialized yet</color>");
         }
