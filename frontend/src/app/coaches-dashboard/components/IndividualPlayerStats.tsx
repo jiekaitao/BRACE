@@ -10,7 +10,14 @@ interface Player {
   number: number;
   concussionProb: number;
   fatigue: number;
+  recovery: number;
+  movementQuality: number;
+  performance: number;
+  heartRate: number;
+  collision_velocity: number;
+  hydration: number;
   vectorData: number[];
+  reasoning?: string;
 }
 
 interface IndividualPlayerStatsProps {
@@ -76,7 +83,7 @@ export function IndividualPlayerStats({ player }: IndividualPlayerStatsProps) {
                 transition={{ duration: 0.8, repeat: Infinity }}
               />
               <div className="text-white text-xs" style={{ fontFamily: "'Press Start 2P', cursive" }}>
-                {isHighRisk && "HIGH INJURY RISK"}
+                {isHighRisk && "HIGH CONCUSSION RISK"}
                 {isHighRisk && isFatigued && " | "}
                 {isFatigued && "FATIGUED"}
               </div>
@@ -86,10 +93,10 @@ export function IndividualPlayerStats({ player }: IndividualPlayerStatsProps) {
 
         <div className="p-6 bg-gray-900">
           <div className="grid grid-cols-2 gap-6">
-            {/* Injury Probability */}
+            {/* Concussion Risk */}
             <div>
               <div className="text-gray-400 text-xs mb-2" style={{ fontFamily: "'Press Start 2P', cursive" }}>
-                INJURY RISK
+                CONCUSSION RISK
               </div>
               <div className="relative">
                 <div className="bg-gray-800 h-8 rounded overflow-hidden border-2 border-gray-700">
@@ -155,31 +162,39 @@ export function IndividualPlayerStats({ player }: IndividualPlayerStatsProps) {
         <div className="p-4 bg-gray-900">
           <div className="grid grid-cols-2 gap-4 text-xs" style={{ fontFamily: "'Press Start 2P', cursive" }}>
             <div className="bg-gray-800 p-3 rounded border-2 border-gray-700">
-              <span className="text-gray-400 block mb-1">IMPACT FORCE</span>
-              <span className="text-cyan-400 text-sm">{Math.round(player.vectorData[0] * 100)}G</span>
-            </div>
-            <div className="bg-gray-800 p-3 rounded border-2 border-gray-700">
-              <span className="text-gray-400 block mb-1">ACCEL</span>
-              <span className="text-cyan-400 text-sm">{(player.vectorData[1] * 10).toFixed(1)} m/s2</span>
-            </div>
-            <div className="bg-gray-800 p-3 rounded border-2 border-gray-700">
-              <span className="text-gray-400 block mb-1">HEART RATE</span>
-              <span className="text-cyan-400 text-sm">{Math.round(120 + player.fatigue * 0.8)} BPM</span>
-            </div>
-            <div className="bg-gray-800 p-3 rounded border-2 border-gray-700">
-              <span className="text-gray-400 block mb-1">TEMP</span>
-              <span className="text-cyan-400 text-sm">{(98.6 + player.fatigue * 0.02).toFixed(1)}F</span>
-            </div>
-            <div className="bg-gray-800 p-3 rounded border-2 border-gray-700">
-              <span className="text-gray-400 block mb-1">HYDRATION</span>
-              <span className={`text-sm ${100 - player.fatigue > 70 ? 'text-green-400' : 'text-orange-400'}`}>
-                {100 - player.fatigue}%
+              <span className="text-gray-400 block mb-1">COLLISION VEL</span>
+              <span className={`text-sm ${player.collision_velocity > 28 ? 'text-red-400' : player.collision_velocity > 16 ? 'text-yellow-400' : 'text-cyan-400'}`}>
+                {player.collision_velocity} MPH
               </span>
             </div>
             <div className="bg-gray-800 p-3 rounded border-2 border-gray-700">
-              <span className="text-gray-400 block mb-1">STAMINA</span>
-              <span className={`text-sm ${100 - player.fatigue > 60 ? 'text-green-400' : 'text-red-400'}`}>
-                {100 - player.fatigue}%
+              <span className="text-gray-400 block mb-1">PERFORMANCE</span>
+              <span className={`text-sm ${player.performance > 70 ? 'text-green-400' : player.performance > 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                {player.performance}%
+              </span>
+            </div>
+            <div className="bg-gray-800 p-3 rounded border-2 border-gray-700">
+              <span className="text-gray-400 block mb-1">HEART RATE</span>
+              <span className={`text-sm ${player.heartRate > 180 ? 'text-red-400' : player.heartRate > 150 ? 'text-orange-400' : 'text-cyan-400'}`}>
+                {player.heartRate} BPM
+              </span>
+            </div>
+            <div className="bg-gray-800 p-3 rounded border-2 border-gray-700">
+              <span className="text-gray-400 block mb-1">RECOVERY</span>
+              <span className={`text-sm ${player.recovery < 30 ? 'text-green-400' : player.recovery < 60 ? 'text-yellow-400' : 'text-red-400'}`}>
+                {player.recovery}%
+              </span>
+            </div>
+            <div className="bg-gray-800 p-3 rounded border-2 border-gray-700">
+              <span className="text-gray-400 block mb-1">HYDRATION</span>
+              <span className={`text-sm ${player.hydration > 70 ? 'text-green-400' : player.hydration > 40 ? 'text-yellow-400' : 'text-orange-400'}`}>
+                {player.hydration}%
+              </span>
+            </div>
+            <div className="bg-gray-800 p-3 rounded border-2 border-gray-700">
+              <span className="text-gray-400 block mb-1">MOVEMENT</span>
+              <span className={`text-sm ${player.movementQuality > 70 ? 'text-green-400' : player.movementQuality > 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                {player.movementQuality}%
               </span>
             </div>
           </div>
@@ -192,16 +207,25 @@ export function IndividualPlayerStats({ player }: IndividualPlayerStatsProps) {
           isHighRisk || isFatigued ? 'bg-orange-600' : 'bg-green-600'
         }`}>
           <h3 className="text-white text-xs" style={{ fontFamily: "'Press Start 2P', cursive" }}>
-            RECOMMENDATION
+            COACH RECOMMENDATION
           </h3>
         </div>
         <div className="p-4 bg-gray-900">
-          <p className="text-white text-xs leading-relaxed" style={{ fontFamily: "'Press Start 2P', cursive" }}>
-            {isHighRisk && isFatigued && "BENCH NOW - High injury + fatigue"}
-            {isHighRisk && !isFatigued && "LIMIT PLAY - Monitor for injury"}
-            {!isHighRisk && isFatigued && "REST - Prevent injury"}
-            {!isHighRisk && !isFatigued && "CLEARED - Safe to play"}
-          </p>
+          <div className="mb-3">
+            <p className="text-white text-xs font-bold mb-2" style={{ fontFamily: "'Press Start 2P', cursive" }}>
+              {isHighRisk && isFatigued && "BENCH NOW"}
+              {isHighRisk && !isFatigued && "LIMIT PLAY"}
+              {!isHighRisk && isFatigued && "REST NEEDED"}
+              {!isHighRisk && !isFatigued && "CLEARED"}
+            </p>
+          </div>
+          {player.reasoning && (
+            <div className="bg-gray-800 p-3 rounded border-2 border-gray-700">
+              <p className="text-gray-300 text-xs leading-relaxed" style={{ fontFamily: "'Press Start 2P', cursive", fontSize: '8px', lineHeight: '1.6' }}>
+                {player.reasoning}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </motion.div>
