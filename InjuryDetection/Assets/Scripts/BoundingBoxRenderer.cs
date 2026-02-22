@@ -36,12 +36,12 @@ public class BoundingBoxRenderer : MonoBehaviour
         if (braceWs == null)
             braceWs = GetComponent<BraceWebSocket>();
         if (braceWs == null)
-            braceWs = FindObjectOfType<BraceWebSocket>();
+            braceWs = FindAnyObjectByType<BraceWebSocket>();
         if (braceWs == null)
             Debug.LogError("[BRACE] BoundingBoxRenderer: No BraceWebSocket found!");
 
         // Find XR camera
-        var rig = FindObjectOfType<OVRCameraRig>();
+        var rig = FindAnyObjectByType<OVRCameraRig>();
         if (rig != null && rig.centerEyeAnchor != null)
             _cam = rig.centerEyeAnchor.GetComponent<Camera>();
         if (_cam == null)

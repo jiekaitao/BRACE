@@ -37,7 +37,7 @@ public class FrameCapture : MonoBehaviour
         if (braceWs == null)
             braceWs = GetComponent<BraceWebSocket>();
         if (braceWs == null)
-            braceWs = FindObjectOfType<BraceWebSocket>();
+            braceWs = FindAnyObjectByType<BraceWebSocket>();
 
         if (braceWs == null)
             Debug.LogError("[BRACE] FrameCapture: No BraceWebSocket found!");

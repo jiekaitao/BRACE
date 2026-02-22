@@ -26,12 +26,12 @@ public class DebugHUD : MonoBehaviour
     void Start()
     {
         // Auto-find components
-        if (braceWs == null) braceWs = FindObjectOfType<BraceWebSocket>();
-        if (frameCapture == null) frameCapture = FindObjectOfType<FrameCapture>();
-        if (boxRenderer == null) boxRenderer = FindObjectOfType<BoundingBoxRenderer>();
+        if (braceWs == null) braceWs = FindAnyObjectByType<BraceWebSocket>();
+        if (frameCapture == null) frameCapture = FindAnyObjectByType<FrameCapture>();
+        if (boxRenderer == null) boxRenderer = FindAnyObjectByType<BoundingBoxRenderer>();
 
         // Find camera
-        var rig = FindObjectOfType<OVRCameraRig>();
+        var rig = FindAnyObjectByType<OVRCameraRig>();
         if (rig != null)
             _cameraAnchor = rig.centerEyeAnchor;
         else

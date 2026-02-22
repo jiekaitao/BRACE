@@ -29,9 +29,9 @@ public class InfoPanel : MonoBehaviour
     {
         // Auto-find BraceWebSocket
         if (braceWs == null)
-            braceWs = FindObjectOfType<BraceWebSocket>();
+            braceWs = FindAnyObjectByType<BraceWebSocket>();
 
-        var rig = FindObjectOfType<OVRCameraRig>();
+        var rig = FindAnyObjectByType<OVRCameraRig>();
         if (rig != null)
             _cameraAnchor = rig.centerEyeAnchor;
         else

@@ -27,7 +27,7 @@ public class ControllerRaycast : MonoBehaviour
     {
         // Auto-find BraceWebSocket
         if (braceWs == null)
-            braceWs = FindObjectOfType<BraceWebSocket>();
+            braceWs = FindAnyObjectByType<BraceWebSocket>();
 
         _line = GetComponent<LineRenderer>();
         if (_line == null)
