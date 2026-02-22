@@ -31,10 +31,10 @@ try:
     # Relative imports work inside Docker (/app/vdss_proto) and dev
     try:
         from vdss_proto import vdss_service_pb2, vdss_service_pb2_grpc, vdss_types_pb2
-    except ImportError:
+    except (ImportError, Exception):
         from backend.vdss_proto import vdss_service_pb2, vdss_service_pb2_grpc, vdss_types_pb2
     _GRPC_AVAILABLE = True
-except ImportError:
+except Exception:
     _GRPC_AVAILABLE = False
 
 # Legacy: also try importing the CortexClient (placeholder SDK from plan)
@@ -297,10 +297,11 @@ class VectorAIStore:
             print(f"[vectorai] Connected via CortexClient to {self._host}:{self._port}", flush=True)
             return
 
-        raise RuntimeError(
-            "[vectorai] No VectorAI client available — gRPC stubs not found "
-            "and CortexClient SDK not installed"
+        print(
+            "[vectorai] No VectorAI client available — running without semantic search",
+            flush=True,
         )
+        self._available = False
 
     def _ensure_collections(self, client: _GrpcVectorAIClient) -> None:
         """Create collections, validating dimensions match.

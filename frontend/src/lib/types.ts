@@ -186,6 +186,21 @@ export interface EquipmentTracking {
   held_by_id: string | null;
 }
 
+/** Pairwise closing speed between two subjects. */
+export interface ProximityPair {
+  a: number;
+  b: number;
+  closing_speed: number;
+  distance: number;
+}
+
+/** Proximity / collision detection data from backend. */
+export interface ProximityData {
+  pairs: ProximityPair[];
+  max_closing_speed: number;
+  collision_warning: boolean;
+}
+
 /** Multi-subject frame response from backend. */
 export interface MultiSubjectFrameResponse {
   frame_index: number;
@@ -193,6 +208,7 @@ export interface MultiSubjectFrameResponse {
   subjects: Record<string, SubjectData>;
   active_track_ids: number[];
   equipment?: EquipmentTracking;
+  proximity?: ProximityData;
   gemini_stats?: GeminiStats;
 }
 

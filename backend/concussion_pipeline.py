@@ -41,7 +41,7 @@ CLIP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 POSE_BATCH_SIZE = int(os.environ.get("POSE_BATCH_SIZE", "60"))
 MAX_PROCESS_SECONDS = float(os.environ.get("CLIP_PROCESS_TIMEOUT_SECONDS", "20"))
 ASSUMED_HEAD_NECK_METERS = float(os.environ.get("ASSUMED_HEAD_NECK_METERS", "0.24"))
-YOLO_MODEL_NAME = os.environ.get("CONCUSSION_POSE_MODEL", "yolov8n-pose.pt")
+YOLO_MODEL_NAME = os.environ.get("CONCUSSION_POSE_MODEL", "yolo11x-pose.pt")
 YOLO_CONF = float(os.environ.get("CONCUSSION_POSE_CONF", "0.25"))
 YOLO_IMGSZ = int(os.environ.get("CONCUSSION_POSE_IMGSZ", "640"))
 

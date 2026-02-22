@@ -14,6 +14,7 @@ import type {
   ReplaySnapshot,
   ServerMessage,
   DebugStats,
+  ProximityData,
 } from "@/lib/types";
 import { getApiBase, getWsBase } from "@/lib/api";
 
@@ -70,11 +71,14 @@ export interface UseAnalysisWebSocketResult {
   peakVelocity: number;
   videoProgress: number | null;
   videoComplete: boolean;
+  collisionWarning: boolean;
+  closingSpeed: number;
   // Multi-subject refs (for canvas rendering — no re-renders)
   subjectsRef: React.MutableRefObject<Map<number, SubjectState>>;
   selectedSubjectRef: React.MutableRefObject<number | null>;
   highlightedClusterRef: React.MutableRefObject<number | null>;
   equipmentRef: React.MutableRefObject<import("@/lib/types").EquipmentTracking | undefined>;
+  proximityRef: React.MutableRefObject<ProximityData | undefined>;
   // React state for subject selection
   selectedSubjectId: number | null;
   activeTrackIds: number[];
@@ -83,6 +87,7 @@ export interface UseAnalysisWebSocketResult {
   startCapture: (videoElement: HTMLVideoElement) => void;
   stopCapture: () => void;
   uploadVideo: (file: File) => Promise<void>;
+  sessionId: string | null;
   // Debug
   debugStatsRef: React.MutableRefObject<DebugStats>;
 }
@@ -135,6 +140,8 @@ export function useAnalysisWebSocket(
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
   const [activeTrackIds, setActiveTrackIds] = useState<number[]>([]);
+  const [collisionWarning, setCollisionWarning] = useState(false);
+  const [closingSpeed, setClosingSpeed] = useState(0);
 
   const lastUiUpdateRef = useRef(0);
   const subjectsRef = useRef<Map<number, SubjectState>>(new Map());
@@ -142,6 +149,7 @@ export function useAnalysisWebSocket(
   const highlightedClusterRef = useRef<number | null>(null);
   const equipmentRef = useRef<import("@/lib/types").EquipmentTracking | undefined>(undefined);
   const userExplicitlySelectedRef = useRef(false);
+  const proximityRef = useRef<ProximityData | undefined>(undefined);
 
   // Debug stats tracking
   const HISTORY_LEN = 60;
@@ -374,6 +382,12 @@ export function useAnalysisWebSocket(
 
         if (frame.equipment) {
           equipmentRef.current = frame.equipment;
+        }
+        if (frame.proximity) {
+          proximityRef.current = frame.proximity;
+          // Collision warnings update immediately (not throttled)
+          setCollisionWarning(frame.proximity.collision_warning);
+          setClosingSpeed(frame.proximity.max_closing_speed);
         }
 
         const now = performance.now();
@@ -1008,7 +1022,11 @@ export function useAnalysisWebSocket(
     startCapture,
     stopCapture,
     uploadVideo,
+    sessionId,
     debugStatsRef,
     equipmentRef,
+    proximityRef,
+    collisionWarning,
+    closingSpeed,
   };
 }
