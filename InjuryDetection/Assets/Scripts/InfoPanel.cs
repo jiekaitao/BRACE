@@ -23,16 +23,16 @@ public class InfoPanel : MonoBehaviour
     [SerializeField] private float rightOffset = 0f;
 
     [Tooltip("TMP font size for title")]
-    [SerializeField] private float titleFontSize = 80f;
+    [SerializeField] private float titleFontSize = 140f;
 
     [Tooltip("TMP font size for body text")]
-    [SerializeField] private float bodyFontSize = 64f;
+    [SerializeField] private float bodyFontSize = 110f;
 
     [Tooltip("World scale of the canvas")]
-    [SerializeField] private float canvasWorldScale = 0.004f;
+    [SerializeField] private float canvasWorldScale = 0.01f;
 
     [Tooltip("Panel size in canvas units")]
-    [SerializeField] private Vector2 panelSize = new Vector2(1100, 900);
+    [SerializeField] private Vector2 panelSize = new Vector2(1600, 1400);
 
     [Tooltip("Panel background alpha (0..1)")]
     [Range(0f, 1f)]
@@ -312,7 +312,7 @@ public class InfoPanel : MonoBehaviour
         _titleText.richText = true;
         _titleText.fontSize = titleFontSize;
         _titleText.fontStyle = FontStyles.Bold;
-        _titleText.color = new Color(0.345f, 0.8f, 0.008f); // green #58CC02
+        _titleText.color = Color.white;
         _titleText.alignment = TextAlignmentOptions.Center;
         _titleText.extraPadding = true;
         _titleText.isOrthographic = true;

@@ -54,6 +54,19 @@ public class ControllerRaycast : MonoBehaviour
 
     private void Update()
     {
+        // Only show beam when a physical controller is active (not hand tracking)
+        bool controllerActive =
+            OVRInput.IsControllerConnected(OVRInput.Controller.RTouch) &&
+            OVRInput.GetActiveController() != OVRInput.Controller.Hands;
+
+        if (!controllerActive)
+        {
+            if (_line != null) _line.enabled = false;
+            return;
+        }
+
+        if (_line != null) _line.enabled = true;
+
         Vector3 origin = transform.position;
         Vector3 direction = transform.forward;
 
