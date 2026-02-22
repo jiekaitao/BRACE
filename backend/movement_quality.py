@@ -740,6 +740,418 @@ class StreamingCurvature:
         self._buf.clear()
 
 
+# ---------------------------------------------------------------------------
+# Head acceleration tracking for collision-triggered concussion detection
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class HeadKinematicState:
+    """Snapshot of per-subject head kinematics for a single frame."""
+    speed_mps: float = 0.0               # head speed magnitude (m/s)
+    accel_magnitude_g: float = 0.0       # acceleration magnitude in g
+    accel_direction_change: float = 0.0  # angle between consecutive accel vectors (radians)
+    jerk_magnitude: float = 0.0          # jerk magnitude (m/s^3)
+    rotational_vel_rps: float = 0.0      # angular velocity (rad/s)
+    velocity_vector: np.ndarray = field(default_factory=lambda: np.zeros(2))
+    accel_vector: np.ndarray = field(default_factory=lambda: np.zeros(2))
+
+
+class HeadAccelerationTracker:
+    """Per-subject head acceleration tracking with cascading EMA smoothing.
+
+    Computes position -> velocity -> acceleration -> jerk derivative chain
+    and tracks acceleration vector direction changes.
+
+    Smoothing: cascading EMA with decreasing alpha at each derivative level
+    to reject noise amplification while preserving real impact transients
+    (50-150ms = 2-5 frames at 30fps).
+    """
+
+    _VEL_EMA_ALPHA = 0.4
+    _ACCEL_EMA_ALPHA = 0.3
+    _JERK_EMA_ALPHA = 0.25
+    _ANGULAR_EMA_ALPHA = 0.3
+
+    def __init__(self) -> None:
+        self._prev_pos: np.ndarray | None = None
+        self._prev_vel: np.ndarray | None = None
+        self._prev_accel: np.ndarray | None = None
+        self._vel_ema = np.zeros(2)
+        self._accel_ema = np.zeros(2)
+        self._jerk_ema: float = 0.0
+        self._prev_ear_angle: float | None = None
+        self._angular_vel_ema: float = 0.0
+        self.latest_state: HeadKinematicState | None = None
+
+    def update(
+        self,
+        head_pos_m: np.ndarray,
+        ear_angle: float,
+        dt: float,
+    ) -> HeadKinematicState:
+        """Update kinematic chain from new head position in meters.
+
+        Args:
+            head_pos_m: (2,) head position in meters (metric-scaled).
+            ear_angle: Angle of ear-to-ear vector (radians).
+            dt: Time step in seconds (1/fps).
+        """
+        dt = max(dt, 1e-4)
+
+        # --- Velocity (first derivative + EMA) ---
+        if self._prev_pos is not None:
+            displacement = head_pos_m - self._prev_pos
+            disp_m = float(np.linalg.norm(displacement))
+            # Sanity: >2m in one frame (~60 m/s at 30fps) is a tracker ID switch.
+            # Reset instead of propagating a phantom spike.
+            if disp_m > 2.0:
+                self.reset()
+                self._prev_pos = head_pos_m.copy()
+                return HeadKinematicState()
+            vel_raw = displacement / dt
+        else:
+            vel_raw = np.zeros(2)
+        self._prev_pos = head_pos_m.copy()
+
+        self._vel_ema = self._VEL_EMA_ALPHA * vel_raw + (1 - self._VEL_EMA_ALPHA) * self._vel_ema
+        speed = float(np.linalg.norm(self._vel_ema))
+
+        # --- Acceleration (second derivative + EMA) ---
+        if self._prev_vel is not None:
+            accel_raw = (self._vel_ema - self._prev_vel) / dt
+        else:
+            accel_raw = np.zeros(2)
+        self._prev_vel = self._vel_ema.copy()
+
+        self._accel_ema = self._ACCEL_EMA_ALPHA * accel_raw + (1 - self._ACCEL_EMA_ALPHA) * self._accel_ema
+        accel_mag_g = float(np.linalg.norm(self._accel_ema)) / 9.81
+
+        # --- Acceleration direction change ---
+        accel_dir_change = 0.0
+        if self._prev_accel is not None:
+            norm_curr = float(np.linalg.norm(self._accel_ema))
+            norm_prev = float(np.linalg.norm(self._prev_accel))
+            if norm_curr > 0.5 and norm_prev > 0.5:  # only meaningful above noise floor
+                cos_theta = float(np.dot(self._accel_ema, self._prev_accel) / (norm_curr * norm_prev))
+                cos_theta = max(-1.0, min(1.0, cos_theta))
+                accel_dir_change = float(np.arccos(cos_theta))
+        self._prev_accel = self._accel_ema.copy()
+
+        # --- Jerk (third derivative + EMA) ---
+        if self._prev_accel is not None:
+            jerk_raw = float(np.linalg.norm(accel_raw - (self._prev_accel if self._prev_accel is not None else np.zeros(2)))) / dt
+        else:
+            jerk_raw = 0.0
+        self._jerk_ema = self._JERK_EMA_ALPHA * jerk_raw + (1 - self._JERK_EMA_ALPHA) * self._jerk_ema
+
+        # --- Rotational velocity ---
+        angular_vel = 0.0
+        if self._prev_ear_angle is not None:
+            d_angle = ear_angle - self._prev_ear_angle
+            d_angle = (d_angle + math.pi) % (2 * math.pi) - math.pi
+            angular_vel = abs(d_angle) / dt
+        self._prev_ear_angle = ear_angle
+        self._angular_vel_ema = (
+            self._ANGULAR_EMA_ALPHA * angular_vel
+            + (1 - self._ANGULAR_EMA_ALPHA) * self._angular_vel_ema
+        )
+
+        # Sanity cap: real head acceleration never exceeds ~300g.
+        # Values above 100g indicate tracker ID switches or detection jumps.
+        accel_mag_g = min(accel_mag_g, 100.0)
+
+        state = HeadKinematicState(
+            speed_mps=speed,
+            accel_magnitude_g=accel_mag_g,
+            accel_direction_change=accel_dir_change,
+            jerk_magnitude=min(self._jerk_ema, 50000.0),
+            rotational_vel_rps=self._angular_vel_ema,
+            velocity_vector=self._vel_ema.copy(),
+            accel_vector=self._accel_ema.copy(),
+        )
+        self.latest_state = state
+        return state
+
+    def reset(self) -> None:
+        self._prev_pos = None
+        self._prev_vel = None
+        self._prev_accel = None
+        self._vel_ema = np.zeros(2)
+        self._accel_ema = np.zeros(2)
+        self._jerk_ema = 0.0
+        self._prev_ear_angle = None
+        self._angular_vel_ema = 0.0
+        self.latest_state = None
+
+
+# ---------------------------------------------------------------------------
+# Collision-triggered concussion detection
+# ---------------------------------------------------------------------------
+
+@dataclass
+class CollisionEvent:
+    """A detected collision with concussion probability."""
+    event_id: str = ""
+    subjects: tuple[int, int] = (0, 0)
+    frame_index: int = 0
+    video_time: float = 0.0
+    pre_impact_closing_speed: float = 0.0
+    peak_head_accel_g: float = 0.0
+    accel_direction_change_deg: float = 0.0
+    peak_jerk: float = 0.0
+    rotational_vel_peak: float = 0.0
+    high_accel_duration_frames: int = 0
+    concussion_probability: float = 0.0
+
+
+def compute_concussion_probability(
+    peak_accel_g: float,
+    accel_direction_change_deg: float,
+    high_accel_duration_frames: int,
+    rotational_vel_peak: float,
+    pre_impact_closing_speed: float,
+) -> float:
+    """Compute 0-100 concussion probability from collision metrics."""
+    # Acceleration component (30 pts): dead zone 3g, full at 15g
+    accel_comp = min(max(peak_accel_g - 3.0, 0.0) / 12.0, 1.0) * 30.0
+
+    # Direction change component (25 pts): dead zone 30°, full at 150°
+    dir_comp = min(max(accel_direction_change_deg - 30.0, 0.0) / 120.0, 1.0) * 25.0
+
+    # Duration component (15 pts): dead zone 1 frame, full at 5 frames
+    dur_comp = min(max(high_accel_duration_frames - 1, 0) / 4.0, 1.0) * 15.0
+
+    # Rotational component (20 pts): dead zone 12 rad/s, full at 35 rad/s
+    rot_comp = min(max(rotational_vel_peak - 12.0, 0.0) / 23.0, 1.0) * 20.0
+
+    # Closing speed component (10 pts): dead zone 0.8, full at 3.0
+    speed_comp = min(max(pre_impact_closing_speed - 0.8, 0.0) / 2.2, 1.0) * 10.0
+
+    raw = accel_comp + dir_comp + dur_comp + rot_comp + speed_comp
+
+    # Sigmoid squash: harder to reach 90+
+    return 100.0 / (1.0 + math.exp(-0.08 * (raw - 50.0)))
+
+
+@dataclass
+class _ApproachContext:
+    subject_a: int
+    subject_b: int
+    peak_closing_speed: float
+    start_frame: int
+    end_frame: int  # monitoring window end
+    peak_accel: dict = field(default_factory=lambda: {})  # sid -> float
+    peak_dir_change: dict = field(default_factory=lambda: {})  # sid -> float (deg)
+    peak_jerk: dict = field(default_factory=lambda: {})
+    peak_rot: dict = field(default_factory=lambda: {})
+    high_accel_frames: dict = field(default_factory=lambda: {})  # sid -> int
+
+
+class HeadImpactAnalyzer:
+    """Multi-subject collision-triggered head impact detection.
+
+    Bridges ClosingSpeedTracker proximity data with per-subject
+    HeadAccelerationTracker states to detect impacts and score
+    concussion probability.
+    """
+
+    APPROACH_THRESHOLD = 0.8       # normalized screen-widths/s
+    MONITOR_WINDOW_FRAMES = 15     # ~0.5s at 30fps
+    ACCEL_SPIKE_THRESHOLD_G = 3.0  # trigger for monitored subjects
+    STANDALONE_ACCEL_G = 20.0      # trigger without closing speed context (high to avoid noise)
+    DIR_CHANGE_THRESHOLD_DEG = 60.0
+    STANDALONE_DIR_CHANGE_DEG = 45.0  # standalone also needs direction change
+    STANDALONE_COOLDOWN_FRAMES = 30   # ~1s between standalone events per subject
+
+    def __init__(self, fps: float = 30.0) -> None:
+        self.fps = fps
+        self._trackers: dict[int, HeadAccelerationTracker] = {}
+        self._monitored: list[_ApproachContext] = []
+        self._recent_events: deque[CollisionEvent] = deque(maxlen=20)
+        self._subject_scores: dict[int, float] = {}
+        self._event_counter = 0
+        self._standalone_last_frame: dict[int, int] = {}  # sid → last standalone frame
+
+    def get_or_create_tracker(self, subject_id: int) -> HeadAccelerationTracker:
+        if subject_id not in self._trackers:
+            self._trackers[subject_id] = HeadAccelerationTracker()
+        return self._trackers[subject_id]
+
+    def update_proximity(self, pairs: list[dict], frame_index: int) -> None:
+        """Receive closing speed pairs and flag high-risk approaches."""
+        # Clean expired monitors
+        self._monitored = [m for m in self._monitored if frame_index <= m.end_frame]
+
+        monitored_set = {(m.subject_a, m.subject_b) for m in self._monitored}
+        for pair in pairs:
+            if pair["closing_speed"] < self.APPROACH_THRESHOLD:
+                continue
+            a, b = min(pair["a"], pair["b"]), max(pair["a"], pair["b"])
+            if (a, b) in monitored_set:
+                # Update peak closing speed
+                for m in self._monitored:
+                    if m.subject_a == a and m.subject_b == b:
+                        m.peak_closing_speed = max(m.peak_closing_speed, pair["closing_speed"])
+                        m.end_frame = max(m.end_frame, frame_index + self.MONITOR_WINDOW_FRAMES)
+                continue
+            self._monitored.append(_ApproachContext(
+                subject_a=a, subject_b=b,
+                peak_closing_speed=pair["closing_speed"],
+                start_frame=frame_index,
+                end_frame=frame_index + self.MONITOR_WINDOW_FRAMES,
+            ))
+
+    def update_subject(
+        self,
+        subject_id: int,
+        head_pos_m: np.ndarray,
+        ear_angle: float,
+        dt: float,
+        frame_index: int,
+        video_time: float,
+    ) -> HeadKinematicState:
+        """Update a subject's head kinematics and check for collision events."""
+        tracker = self.get_or_create_tracker(subject_id)
+        state = tracker.update(head_pos_m, ear_angle, dt)
+
+        dir_change_deg = math.degrees(state.accel_direction_change)
+
+        # Check monitored pairs
+        for ctx in self._monitored:
+            if subject_id not in (ctx.subject_a, ctx.subject_b):
+                continue
+            sid = subject_id
+            ctx.peak_accel[sid] = max(ctx.peak_accel.get(sid, 0.0), state.accel_magnitude_g)
+            ctx.peak_dir_change[sid] = max(ctx.peak_dir_change.get(sid, 0.0), dir_change_deg)
+            ctx.peak_jerk[sid] = max(ctx.peak_jerk.get(sid, 0.0), state.jerk_magnitude)
+            ctx.peak_rot[sid] = max(ctx.peak_rot.get(sid, 0.0), state.rotational_vel_rps)
+            if state.accel_magnitude_g > self.ACCEL_SPIKE_THRESHOLD_G:
+                ctx.high_accel_frames[sid] = ctx.high_accel_frames.get(sid, 0) + 1
+
+        # Check for collision event triggers
+        for ctx in list(self._monitored):
+            if frame_index < ctx.end_frame:
+                continue  # still in monitoring window
+            # Window expired — evaluate
+            self._evaluate_context(ctx)
+
+        # Standalone extreme spike (no closing speed needed)
+        # Requires high accel AND meaningful direction change AND cooldown elapsed
+        last_standalone = self._standalone_last_frame.get(subject_id, -999)
+        if (state.accel_magnitude_g > self.STANDALONE_ACCEL_G
+                and dir_change_deg > self.STANDALONE_DIR_CHANGE_DEG
+                and (frame_index - last_standalone) >= self.STANDALONE_COOLDOWN_FRAMES):
+            self._event_counter += 1
+            prob = compute_concussion_probability(
+                peak_accel_g=state.accel_magnitude_g,
+                accel_direction_change_deg=dir_change_deg,
+                high_accel_duration_frames=1,
+                rotational_vel_peak=state.rotational_vel_rps,
+                pre_impact_closing_speed=0.0,
+            )
+            if prob > 10.0:
+                self._standalone_last_frame[subject_id] = frame_index
+                evt = CollisionEvent(
+                    event_id=f"standalone_{self._event_counter}",
+                    subjects=(subject_id, subject_id),
+                    frame_index=frame_index,
+                    video_time=video_time,
+                    peak_head_accel_g=state.accel_magnitude_g,
+                    accel_direction_change_deg=dir_change_deg,
+                    peak_jerk=state.jerk_magnitude,
+                    rotational_vel_peak=state.rotational_vel_rps,
+                    concussion_probability=prob,
+                )
+                self._recent_events.append(evt)
+                self._subject_scores[subject_id] = max(
+                    self._subject_scores.get(subject_id, 0.0), prob
+                )
+
+        return state
+
+    def _evaluate_context(self, ctx: _ApproachContext) -> None:
+        """Evaluate a completed monitoring window for collision events."""
+        for sid in (ctx.subject_a, ctx.subject_b):
+            peak_accel = ctx.peak_accel.get(sid, 0.0)
+            peak_dir = ctx.peak_dir_change.get(sid, 0.0)
+            peak_jerk = ctx.peak_jerk.get(sid, 0.0)
+            peak_rot = ctx.peak_rot.get(sid, 0.0)
+            dur = ctx.high_accel_frames.get(sid, 0)
+
+            # Must exceed at least one threshold
+            if (peak_accel < self.ACCEL_SPIKE_THRESHOLD_G
+                    and peak_dir < self.DIR_CHANGE_THRESHOLD_DEG):
+                continue
+
+            self._event_counter += 1
+            prob = compute_concussion_probability(
+                peak_accel_g=peak_accel,
+                accel_direction_change_deg=peak_dir,
+                high_accel_duration_frames=dur,
+                rotational_vel_peak=peak_rot,
+                pre_impact_closing_speed=ctx.peak_closing_speed,
+            )
+            other = ctx.subject_b if sid == ctx.subject_a else ctx.subject_a
+            evt = CollisionEvent(
+                event_id=f"collision_{self._event_counter}",
+                subjects=(sid, other),
+                frame_index=ctx.end_frame,
+                video_time=0.0,
+                pre_impact_closing_speed=ctx.peak_closing_speed,
+                peak_head_accel_g=peak_accel,
+                accel_direction_change_deg=peak_dir,
+                peak_jerk=peak_jerk,
+                rotational_vel_peak=peak_rot,
+                high_accel_duration_frames=dur,
+                concussion_probability=prob,
+            )
+            self._recent_events.append(evt)
+            self._subject_scores[sid] = max(
+                self._subject_scores.get(sid, 0.0), prob
+            )
+
+        # Remove from monitored
+        if ctx in self._monitored:
+            self._monitored.remove(ctx)
+
+    def get_subject_score(self, subject_id: int) -> float:
+        """Get current concussion probability for a subject (0-100)."""
+        return self._subject_scores.get(subject_id, 0.0)
+
+    def get_recent_events(self) -> list[dict]:
+        """Get recent collision events as dicts for JSON serialization."""
+        result = []
+        for evt in self._recent_events:
+            result.append({
+                "event_id": evt.event_id,
+                "subjects": list(evt.subjects),
+                "frame_index": evt.frame_index,
+                "video_time": round(evt.video_time, 3),
+                "pre_impact_closing_speed": round(evt.pre_impact_closing_speed, 3),
+                "peak_head_accel_g": round(evt.peak_head_accel_g, 2),
+                "accel_direction_change_deg": round(evt.accel_direction_change_deg, 1),
+                "peak_jerk": round(evt.peak_jerk, 1),
+                "rotational_vel_peak": round(evt.rotational_vel_peak, 2),
+                "concussion_probability": round(evt.concussion_probability, 1),
+            })
+        return result
+
+    def decay_scores(self, factor: float = 0.995) -> None:
+        """Decay all subject scores slightly each frame."""
+        for sid in list(self._subject_scores):
+            self._subject_scores[sid] *= factor
+            if self._subject_scores[sid] < 0.5:
+                del self._subject_scores[sid]
+
+    def cleanup_subject(self, subject_id: int) -> None:
+        self._trackers.pop(subject_id, None)
+        self._subject_scores.pop(subject_id, None)
+        self._standalone_last_frame.pop(subject_id, None)
+
+
 class MovementQualityTracker:
     """Per-subject movement quality tracking across multiple clusters.
 

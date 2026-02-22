@@ -23,6 +23,7 @@ import JerseyDebugPanel from "@/components/JerseyDebugPanel";
 import WorkoutTimeline from "@/components/WorkoutTimeline";
 import InjuryContextPanel from "@/components/InjuryContextPanel";
 import { useAuth } from "@/contexts/AuthContext";
+import { useExport } from "@/hooks/useExport";
 
 function VideoControls({ videoRef, replaying }: { videoRef: React.RefObject<HTMLVideoElement | null>; replaying: boolean }) {
   const [paused, setPaused] = useState(false);
@@ -145,10 +146,21 @@ function AnalyzeContent() {
     startCapture,
     stopCapture,
     uploadVideo,
+    sessionId,
     debugStatsRef,
     equipmentRef,
+    proximityRef,
+    collisionWarning,
+    closingSpeed,
   } = useAnalysisWebSocket(active, wsMode);
 
+  const {
+    exportStatus,
+    exportProgress,
+    annotatedUrl,
+    skeletonUrl,
+    startExport,
+  } = useExport();
 
   // Build subject labels and identities maps from subjectsRef
   const subjectLabels = useMemo(() => {
@@ -360,6 +372,16 @@ function AnalyzeContent() {
                 />
               )}
 
+              {/* Collision warning overlay */}
+              {collisionWarning && (
+                <div
+                  className="absolute top-4 left-1/2 -translate-x-1/2 px-5 py-2 rounded-xl bg-red-600/90 text-white font-extrabold text-sm tracking-wide shadow-lg animate-pulse"
+                  style={{ zIndex: 25 }}
+                >
+                  COLLISION WARNING &mdash; {closingSpeed.toFixed(1)} u/s
+                </div>
+              )}
+
               {/* Video progress overlay */}
               {mode === "video" && videoProgress !== null && !videoComplete && (
                 <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/60 to-transparent">
@@ -374,13 +396,50 @@ function AnalyzeContent() {
               {/* Video complete overlay */}
               {videoComplete && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                  <div className="pop-in bg-white rounded-[16px] p-6 text-center">
+                  <div className="pop-in bg-white rounded-[16px] p-6 text-center max-w-sm">
                     <div className="text-2xl font-extrabold text-[#58CC02] mb-2">
                       Analysis Complete
                     </div>
-                    <p className="text-sm text-[#777777]">
+                    <p className="text-sm text-[#777777] mb-4">
                       {activeTrackIds.length} subjects tracked &middot; {nSegments} motions in {nClusters} clusters
                     </p>
+
+                    {/* Export Replay */}
+                    {exportStatus === "idle" && sessionId && (
+                      <DuoButton variant="blue" onClick={() => startExport(sessionId)}>
+                        Export Replay
+                      </DuoButton>
+                    )}
+
+                    {exportStatus === "processing" && (
+                      <div className="mt-2">
+                        <p className="text-xs font-bold text-[#777777] mb-2">Generating export... {Math.round(exportProgress)}%</p>
+                        <ProgressBar value={exportProgress / 100} color="#1CB0F6" height={8} />
+                      </div>
+                    )}
+
+                    {exportStatus === "complete" && annotatedUrl && skeletonUrl && (
+                      <div className="flex gap-3 mt-2 justify-center">
+                        <a
+                          href={annotatedUrl}
+                          download
+                          className="inline-flex items-center gap-1 px-4 py-2 bg-[#58CC02] text-white font-bold text-sm rounded-lg hover:brightness-105 transition"
+                        >
+                          Download MP4
+                        </a>
+                        <a
+                          href={skeletonUrl}
+                          download
+                          className="inline-flex items-center gap-1 px-4 py-2 bg-[#1CB0F6] text-white font-bold text-sm rounded-lg hover:brightness-105 transition"
+                        >
+                          Download JSON
+                        </a>
+                      </div>
+                    )}
+
+                    {exportStatus === "error" && (
+                      <p className="text-sm text-[#FF4B4B] mt-2">Export failed. Try again.</p>
+                    )}
                   </div>
                 </div>
               )}

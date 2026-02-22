@@ -79,13 +79,23 @@ try:
 except ImportError:
     _JERSEY_DETECTOR_AVAILABLE = False
 
-# VectorAI integration (required)
+# VectorAI integration (optional — degrades gracefully if unavailable)
 _vectorai_store = None
 _movement_search = None
 _vector_classifier = None
-from vectorai_store import VectorAIStore
-from vector_movement_search import MovementSearchEngine
-from vector_activity_classifier import VectorActivityClassifier
+try:
+    from vectorai_store import VectorAIStore
+    from vector_movement_search import MovementSearchEngine
+    from vector_activity_classifier import VectorActivityClassifier
+    _VECTORAI_AVAILABLE = True
+except Exception:
+    _VECTORAI_AVAILABLE = False
+
+try:
+    from export_processor import export_replay as _export_replay
+    _EXPORT_AVAILABLE = True
+except ImportError:
+    _EXPORT_AVAILABLE = False
 
 try:
     import pynvml
@@ -141,6 +151,89 @@ _active_streams: dict[str, dict[str, Any]] = {}
 
 DISABLE_REID = os.environ.get("DISABLE_REID", "0") == "1"
 PIPELINE_BACKEND = os.environ.get("PIPELINE_BACKEND", "legacy")
+
+# Closing speed threshold (normalized screen-widths/second)
+CLOSING_SPEED_THRESHOLD = float(os.environ.get("CLOSING_SPEED_THRESHOLD", "1.5"))
+
+
+class ClosingSpeedTracker:
+    """Track pairwise closing speed between subjects using bbox centers."""
+
+    def __init__(self) -> None:
+        self.prev_centers: dict[int, tuple[float, float]] = {}
+        self.prev_time: float = -1.0
+
+    def update(
+        self,
+        subjects_data: dict[str, dict[str, Any]],
+        video_time: float,
+        fps: float,
+    ) -> dict[str, Any]:
+        """Compute pairwise closing speeds from current frame's bbox centers.
+
+        Returns a proximity dict with pairs, max_closing_speed, and collision_warning.
+        """
+        # Extract current bbox centers (normalized 0-1)
+        current_centers: dict[int, tuple[float, float]] = {}
+        for sid_str, data in subjects_data.items():
+            bbox = data.get("bbox")
+            if bbox:
+                cx = (bbox["x1"] + bbox["x2"]) / 2.0
+                cy = (bbox["y1"] + bbox["y2"]) / 2.0
+                current_centers[int(sid_str)] = (cx, cy)
+
+        dt = 1.0 / max(fps, 1.0)
+        if self.prev_time >= 0 and video_time > 0:
+            actual_dt = video_time - self.prev_time
+            if 0 < actual_dt < 1.0:  # sanity bound
+                dt = actual_dt
+
+        pairs: list[dict[str, Any]] = []
+        max_closing_speed = 0.0
+
+        if self.prev_centers and len(current_centers) >= 2:
+            sids = list(current_centers.keys())
+            for i in range(len(sids)):
+                for j in range(i + 1, len(sids)):
+                    a, b = sids[i], sids[j]
+                    if a not in self.prev_centers or b not in self.prev_centers:
+                        continue
+
+                    # Current distance
+                    ax, ay = current_centers[a]
+                    bx, by = current_centers[b]
+                    curr_dist = math.hypot(ax - bx, ay - by)
+
+                    # Previous distance
+                    pax, pay = self.prev_centers[a]
+                    pbx, pby = self.prev_centers[b]
+                    prev_dist = math.hypot(pax - pbx, pay - pby)
+
+                    # Closing speed: positive = approaching
+                    closing_speed = (prev_dist - curr_dist) / dt
+
+                    if closing_speed > 0.1:  # only report approaching pairs
+                        pairs.append({
+                            "a": a,
+                            "b": b,
+                            "closing_speed": round(closing_speed, 3),
+                            "distance": round(curr_dist, 4),
+                        })
+                        if closing_speed > max_closing_speed:
+                            max_closing_speed = closing_speed
+
+        self.prev_centers = current_centers
+        self.prev_time = video_time
+
+        # Sort by closing speed descending, keep top 5
+        pairs.sort(key=lambda p: p["closing_speed"], reverse=True)
+        pairs = pairs[:5]
+
+        return {
+            "pairs": pairs,
+            "max_closing_speed": round(max_closing_speed, 3),
+            "collision_warning": max_closing_speed >= CLOSING_SPEED_THRESHOLD,
+        }
 
 
 @app.on_event("startup")
@@ -208,14 +301,23 @@ def load_models():
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     print(f"[startup] Upload dir: {UPLOAD_DIR}", flush=True)
 
-    # Initialize VectorAI store (required — raises on failure)
+    # Initialize VectorAI store (optional — skips if unavailable)
     global _vectorai_store, _movement_search, _vector_classifier
-    _vectorai_store = VectorAIStore()
-    if not _vectorai_store.health_check():
-        raise RuntimeError("[startup] VectorAI health check failed after connection")
-    _movement_search = MovementSearchEngine(_vectorai_store)
-    _vector_classifier = VectorActivityClassifier(_vectorai_store)
-    print("[startup] VectorAI store and search engine initialized", flush=True)
+    if _VECTORAI_AVAILABLE:
+        try:
+            _vectorai_store = VectorAIStore()
+            if _vectorai_store.health_check():
+                _movement_search = MovementSearchEngine(_vectorai_store)
+                _vector_classifier = VectorActivityClassifier(_vectorai_store)
+                print("[startup] VectorAI store and search engine initialized", flush=True)
+            else:
+                print("[startup] VectorAI health check failed — running without it", flush=True)
+                _vectorai_store = None
+        except Exception as e:
+            print(f"[startup] VectorAI unavailable ({e}) — running without semantic search", flush=True)
+            _vectorai_store = None
+    else:
+        print("[startup] VectorAI modules not installed — running without semantic search", flush=True)
 
     # Ensure MongoDB indexes for auth/chat/workout collections
     try:
@@ -483,6 +585,8 @@ def demo_video_thumbnail(filename: str):
 @app.get("/api/vectorai/health")
 def vectorai_health():
     """Return VectorAI connection status."""
+    if _vectorai_store is None:
+        return {"status": "disabled", "host": None, "port": None}
     if _vectorai_store.health_check():
         return {"status": "ok", "host": _vectorai_store._host, "port": _vectorai_store._port}
     return {"status": "unhealthy", "host": _vectorai_store._host, "port": _vectorai_store._port}
@@ -866,6 +970,206 @@ async def ws_game_progress(websocket: WebSocket, game_id: str):
         socks = _game_progress_sockets.get(game_id, [])
         if websocket in socks:
             socks.remove(websocket)
+
+
+# ---------------------------------------------------------------------------
+# Replay Export API Endpoints
+# ---------------------------------------------------------------------------
+
+_export_tasks: dict[str, asyncio.Task] = {}
+_export_results: dict[str, dict] = {}
+_export_progress_sockets: dict[str, list[WebSocket]] = {}
+
+
+@app.post("/api/export")
+async def create_export(
+    session_id: str = Query(..., description="Upload session ID"),
+    quality_overlay: bool = Query(True, description="Include quality metrics overlay"),
+):
+    """Start a replay export for a previously uploaded video.
+
+    Returns export_id. Connect to WS /ws/export/{export_id} for progress.
+    """
+    if not _EXPORT_AVAILABLE:
+        return {"error": "Export module not available."}
+
+    video_path = _uploads.get(session_id)
+    if not video_path or not video_path.exists():
+        return {"error": "Video not found. Upload first via POST /api/upload."}
+
+    export_id = str(uuid.uuid4())
+
+    # Output directory
+    export_dir = UPLOAD_DIR / "exports" / export_id
+    export_dir.mkdir(parents=True, exist_ok=True)
+
+    # Start background task
+    task = asyncio.create_task(
+        _process_export_bg(export_id, video_path, export_dir, quality_overlay)
+    )
+    _export_tasks[export_id] = task
+    task.add_done_callback(lambda t: _export_tasks.pop(export_id, None))
+
+    return {"export_id": export_id, "status": "processing"}
+
+
+@app.get("/api/export/{export_id}")
+async def get_export_status(export_id: str):
+    """Check export status."""
+    if export_id in _export_results:
+        result = _export_results[export_id]
+        return {
+            "export_id": export_id,
+            "status": result.get("status", "complete"),
+            "total_frames": result.get("total_frames"),
+            "subjects_tracked": result.get("subjects_tracked"),
+            "annotated_url": f"/api/export/{export_id}/download/video",
+            "skeleton_url": f"/api/export/{export_id}/download/skeleton",
+        }
+    if export_id in _export_tasks:
+        return {"export_id": export_id, "status": "processing"}
+    return {"error": "Export not found."}
+
+
+@app.get("/api/export/{export_id}/download/{file_type}")
+async def download_export(export_id: str, file_type: str):
+    """Download export file. file_type: 'video' or 'skeleton'."""
+    from starlette.responses import FileResponse
+
+    result = _export_results.get(export_id)
+    if not result:
+        return {"error": "Export not found or not complete."}
+
+    if file_type == "video":
+        path = result.get("annotated_path")
+        if path and Path(path).exists():
+            return FileResponse(
+                path, media_type="video/mp4",
+                filename=f"{export_id}_annotated.mp4",
+            )
+    elif file_type == "skeleton":
+        path = result.get("skeleton_path")
+        if path and Path(path).exists():
+            return FileResponse(
+                path, media_type="application/json",
+                filename=f"{export_id}_skeleton.json",
+            )
+
+    return {"error": f"File '{file_type}' not found."}
+
+
+@app.websocket("/ws/export/{export_id}")
+async def ws_export_progress(websocket: WebSocket, export_id: str):
+    """WebSocket for real-time export progress."""
+    await websocket.accept()
+
+    if export_id not in _export_progress_sockets:
+        _export_progress_sockets[export_id] = []
+    _export_progress_sockets[export_id].append(websocket)
+
+    try:
+        # If already complete, send result immediately
+        if export_id in _export_results:
+            result = _export_results[export_id]
+            await websocket.send_json({
+                "type": "complete",
+                "annotated_url": f"/api/export/{export_id}/download/video",
+                "skeleton_url": f"/api/export/{export_id}/download/skeleton",
+                "data": result,
+            })
+            return
+
+        # Keep connection alive while processing
+        while export_id in _export_tasks:
+            try:
+                await asyncio.wait_for(websocket.receive(), timeout=5.0)
+            except asyncio.TimeoutError:
+                try:
+                    await websocket.send_json({"type": "heartbeat"})
+                except Exception:
+                    break
+            except WebSocketDisconnect:
+                break
+
+        # Send final result if available
+        if export_id in _export_results:
+            result = _export_results[export_id]
+            await websocket.send_json({
+                "type": "complete",
+                "annotated_url": f"/api/export/{export_id}/download/video",
+                "skeleton_url": f"/api/export/{export_id}/download/skeleton",
+                "data": result,
+            })
+    except WebSocketDisconnect:
+        pass
+    finally:
+        socks = _export_progress_sockets.get(export_id, [])
+        if websocket in socks:
+            socks.remove(websocket)
+
+
+async def _process_export_bg(
+    export_id: str, video_path: Path, output_dir: Path, quality_overlay: bool
+) -> None:
+    """Background task to process a replay export."""
+    try:
+        # Build resolver
+        use_reid = (
+            not DISABLE_REID
+            and _reid_extractor is not None
+            and not isinstance(_reid_extractor, DummyExtractor)
+        )
+
+        async def _progress_cb(pct: float, data: dict):
+            sockets = _export_progress_sockets.get(export_id, [])
+            for ws in list(sockets):
+                try:
+                    await ws.send_json({
+                        "type": "progress",
+                        "progress": round(pct, 1),
+                        "data": data,
+                    })
+                except Exception:
+                    sockets.remove(ws)
+
+        result = await _export_replay(
+            video_path=video_path,
+            export_id=export_id,
+            output_dir=output_dir,
+            pipeline=pipeline,
+            reid_extractor=_reid_extractor if use_reid else None,
+            cross_cut_extractor=_clip_reid_extractor if use_reid else None,
+            progress_callback=_progress_cb,
+            quality_overlay=quality_overlay,
+        )
+
+        _export_results[export_id] = result
+
+        # Notify subscribers of completion
+        sockets = _export_progress_sockets.get(export_id, [])
+        for ws in list(sockets):
+            try:
+                await ws.send_json({
+                    "type": "complete",
+                    "annotated_url": f"/api/export/{export_id}/download/video",
+                    "skeleton_url": f"/api/export/{export_id}/download/skeleton",
+                    "data": result,
+                })
+            except Exception:
+                pass
+
+        print(f"[export] Export {export_id} complete", flush=True)
+
+    except Exception as e:
+        print(f"[export] Export {export_id} failed: {e}", flush=True)
+        _export_results[export_id] = {"export_id": export_id, "status": "error", "error": str(e)}
+
+        sockets = _export_progress_sockets.get(export_id, [])
+        for ws in list(sockets):
+            try:
+                await ws.send_json({"type": "error", "message": str(e)})
+            except Exception:
+                pass
 
 
 @app.post("/api/activity-templates")
@@ -1272,6 +1576,7 @@ def _build_vr_response(
     video_time: float,
     vr_selected_subject: int | None,
     timing: dict[str, Any],
+    proximity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build VR-optimized response: minimal data for all, detailed for selected.
 
@@ -1314,13 +1619,16 @@ def _build_vr_response(
                 "phase": str(data.get("phase", "calibrating")),
                 "selected": False,
             }
-    return {
+    resp: dict[str, Any] = {
         "frame_index": frame_idx,
         "video_time": float(video_time),
         "subjects": vr_subjects,
         "active_track_ids": [int(x) for x in active_ids],
         "timing": timing,
     }
+    if proximity is not None:
+        resp["proximity"] = proximity
+    return resp
 
 
 async def _run_analysis_bg(analyzer: "StreamingAnalyzer", subject_id: str) -> None:
@@ -1394,6 +1702,16 @@ async def _handle_webcam_mode(
     # Similar movements cache: subject_id -> {cluster_id, results, timestamp}
     _similar_cache: dict[int, dict] = {}
     _SIMILAR_COOLDOWN = 2.0  # seconds between lookups per subject
+
+    # Closing speed tracker for collision detection
+    closing_speed_tracker = ClosingSpeedTracker()
+
+    # Head impact analyzer for collision-triggered concussion detection
+    try:
+        from movement_quality import HeadImpactAnalyzer as _HIA
+        head_impact_analyzer: Any = _HIA(fps=target_fps)
+    except ImportError:
+        head_impact_analyzer = None
 
     def _get_buffered_frame(idx: int) -> np.ndarray | None:
         return frame_buffer.get(idx)
@@ -1674,6 +1992,31 @@ async def _handle_webcam_mode(
                 # Process through analyzer (pixel coordinates for SRP)
                 response = analyzer.process_frame(landmarks_xyzv, img_wh=(w, h))
 
+                # Feed head data to HeadImpactAnalyzer for collision-triggered concussion detection
+                if head_impact_analyzer is not None:
+                    _head_vis = [float(landmarks_xyzv[idx, 3]) for idx in (0, 7, 8)]  # nose, L ear, R ear
+                    if all(v >= 0.3 for v in _head_vis):
+                        # Head position: average of nose + ears in pixels
+                        _nose_px = landmarks_xyzv[0, :2].astype(np.float64)
+                        _lear_px = landmarks_xyzv[7, :2].astype(np.float64)
+                        _rear_px = landmarks_xyzv[8, :2].astype(np.float64)
+                        _head_px = (_nose_px + _lear_px + _rear_px) / 3.0
+                        # Pixel → meter scale (shoulder width ~ 0.40m)
+                        _ls = landmarks_xyzv[11, :2].astype(np.float64)
+                        _rs = landmarks_xyzv[12, :2].astype(np.float64)
+                        _sw_px = float(np.linalg.norm(_ls - _rs))
+                        _px_to_m = 0.40 / max(_sw_px, 1.0)
+                        _head_m = _head_px * _px_to_m
+                        _ear_angle = float(np.arctan2(_rear_px[1] - _lear_px[1], _rear_px[0] - _lear_px[0]))
+                        _head_state = head_impact_analyzer.update_subject(
+                            subject_id, _head_m, _ear_angle,
+                            1.0 / max(target_fps, 1.0), frame_idx, video_time,
+                        )
+                        # Overlay collision concussion score
+                        _collision_score = head_impact_analyzer.get_subject_score(subject_id)
+                        if _collision_score > 0 and "quality" in response:
+                            response["quality"]["collision_concussion"] = round(_collision_score, 1)
+
                 # Normalize landmark coordinates to [0, 1] -- sparse, body joints only
                 # Round to 4 decimal places to reduce JSON payload size
                 response["landmarks"] = [
@@ -1928,10 +2271,24 @@ async def _handle_webcam_mode(
                 "held_by_id": equipment_state["held_by_id"],
             }
 
+            # Compute pairwise closing speeds between subjects
+            proximity_data = closing_speed_tracker.update(
+                subjects_data, video_time, target_fps,
+            )
+
+            # Feed proximity pairs to head impact analyzer
+            collision_events_data: list[dict] | None = None
+            if head_impact_analyzer is not None:
+                head_impact_analyzer.update_proximity(proximity_data["pairs"], frame_idx)
+                head_impact_analyzer.decay_scores()
+                events = head_impact_analyzer.get_recent_events()
+                if events:
+                    collision_events_data = events
+
             if client_type == "vr":
                 vr_resp = _build_vr_response(
                     subjects_data, active_ids, frame_idx, video_time,
-                    vr_selected_subject, timing_dict,
+                    vr_selected_subject, timing_dict, proximity_data,
                 )
                 try:
                     vr_json = json.dumps(vr_resp, separators=(",", ":"))
@@ -1940,7 +2297,7 @@ async def _handle_webcam_mode(
                     print(f"[vr] JSON serialize FAILED: {e}", flush=True)
                     vr_resp = _build_vr_response(
                         subjects_data, active_ids, frame_idx, video_time,
-                        None, timing_dict,  # pretend no selection to skip quality
+                        None, timing_dict, proximity_data,
                     )
                     vr_json = json.dumps(vr_resp, separators=(",", ":"))
                 # Log size periodically for debugging (every 300 frames = ~10s)
@@ -1952,15 +2309,19 @@ async def _handle_webcam_mode(
                     _active_streams[stream_id]["_last_vr_json_size"] = len(vr_json)
                 await websocket.send_text(vr_json)
             else:
-                await websocket.send_json({
+                ws_response: dict[str, Any] = {
                     "frame_index": frame_idx,
                     "video_time": video_time,
                     "subjects": subjects_data,
                     "active_track_ids": active_ids,
                     "equipment": equipment_data,
+                    "proximity": proximity_data,
                     "timing": timing_dict,
                     "gemini_stats": gemini.get_stats() if gemini is not None else None,
-                })
+                }
+                if collision_events_data:
+                    ws_response["collision_events"] = collision_events_data
+                await websocket.send_json(ws_response)
 
             # Update active stream registry (every 30 frames to avoid overhead)
             if stream_id and stream_id in _active_streams:

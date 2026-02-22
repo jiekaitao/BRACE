@@ -36,6 +36,9 @@ All VectorAI code used "graceful degradation" — failures were silently swallow
 
 ## Concussion Risk Detection
 
+### Challenge: Head-to-Ground Impacts Missed Entirely
+The `ConcussionMonitor` only detected person-to-person collisions. When a player's head strikes the ground (e.g., after a tackle), the impact was missed because there's no second person involved. We added a ground-impact detection pipeline that checks three conditions simultaneously: (1) high downward head velocity (>1.5 m/s peak in recent history), (2) sudden deceleration (current velocity drops below 30% of peak), and (3) head at ground level (head Y >= 85% of lowest visible keypoint Y). All three must be true to filter out controlled rolls/slides where the head doesn't abruptly stop. Ground impacts use a shorter impact duration (6ms vs 8ms for body-to-body) since the ground is harder, and the head's full pre-impact speed is the delta-v (ground has infinite mass). Scoring reuses the existing Rowson & Duma biomechanical model.
+
 ## Team Detection
 
 ### Challenge: Gemini Color Strings Fragile for Team Clustering
