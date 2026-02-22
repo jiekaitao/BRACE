@@ -114,10 +114,24 @@ public class DebugHUD : MonoBehaviour
         {
             string camStatus = frameCapture.IsCapturing ? "<color=#00ff00>CAPTURING</color>" : "<color=#ffcc00>WAITING</color>";
             sb.AppendLine($"Cam: {camStatus} ({frameCapture.CameraName})");
+            sb.AppendLine($"Res: {frameCapture.Resolution}  Rot: {frameCapture.RotationAngle}° Mirror: {frameCapture.IsMirrored}");
             sb.AppendLine($"Sent: {frameCapture.FramesSent}");
+
+            // Brightness diagnostic — detect black frames
+            float bright = frameCapture.AvgBrightness;
+            if (frameCapture.IsCapturing && frameCapture.FramesSent > 0)
+            {
+                string brightColor = bright < 5f ? "#ff3333" : bright < 30f ? "#ffcc00" : "#00ff00";
+                sb.AppendLine($"Brightness: <color={brightColor}>{bright:F0}</color>/255  NonBlack: {frameCapture.NonBlackPixels}/{frameCapture.TotalSampled}");
+
+                if (bright < 5f)
+                    sb.AppendLine("<color=#ff3333>FRAMES ARE BLACK! Camera not providing image data</color>");
+            }
 
             if (!frameCapture.IsCapturing && frameCapture.CameraName == "NOT FOUND")
                 sb.AppendLine("<color=#ffcc00>No camera - check permissions</color>");
+            else if (!frameCapture.IsCapturing && frameCapture.CameraName == "PERM DENIED")
+                sb.AppendLine("<color=#ff3333>Camera permission denied!</color>");
             else if (!frameCapture.IsCapturing && frameCapture.CameraName == "none")
                 sb.AppendLine("<color=#ffcc00>Camera not initialized yet</color>");
         }
