@@ -74,7 +74,7 @@ except ImportError:
     dashboard_router = None
 
 try:
-    from jersey_detector import JerseyDetector
+    from jersey_detector import JerseyDetector, cluster_teams_visual, TeamClustering
     _JERSEY_DETECTOR_AVAILABLE = True
 except ImportError:
     _JERSEY_DETECTOR_AVAILABLE = False
@@ -280,6 +280,28 @@ def get_active_streams():
             "resolution": info.get("resolution"),
         })
     return {"count": len(streams), "streams": streams}
+
+
+@app.get("/api/streams/{stream_id}/frame")
+def get_stream_frame(stream_id: str, w: int = Query(default=640, ge=80, le=1920)):
+    """Return the latest frame from a stream as a JPEG image."""
+    info = _active_streams.get(stream_id)
+    if info is None:
+        return Response(status_code=404, content="Stream not found")
+    rgb = info.get("_last_rgb")
+    if rgb is None:
+        return Response(status_code=204, content="No frame yet")
+    h_orig, w_orig = rgb.shape[:2]
+    if w < w_orig:
+        scale = w / w_orig
+        new_h = int(h_orig * scale)
+        resized = cv2.resize(rgb, (w, new_h))
+    else:
+        resized = rgb
+    _, buf = cv2.imencode(".jpg", cv2.cvtColor(resized, cv2.COLOR_RGB2BGR),
+                          [cv2.IMWRITE_JPEG_QUALITY, 80])
+    return Response(content=buf.tobytes(), media_type="image/jpeg",
+                    headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/gpu-stats")
@@ -990,6 +1012,7 @@ async def _handle_webcam_mode(
     jersey_debug_cache: dict[int, dict] = {}  # subject_id -> {"crop_b64": str, "gemini_response": str}
     jersey_detect_pending: bool = False
     jersey_session_start: float = time.monotonic()
+    team_clustering: TeamClustering | None = None
 
     # Ring buffer of recent RGB frames for Gemini classification
     frame_buffer: dict[int, np.ndarray] = {}
@@ -1466,6 +1489,8 @@ async def _handle_webcam_mode(
                 info["subject_count"] = len(active_ids)
                 if info["resolution"] is None:
                     info["resolution"] = [w, h]
+                # Store latest frame for high-res snapshot endpoint
+                info["_last_rgb"] = rgb
                 # Generate thumbnail every 30 frames (~1s)
                 if frame_idx % 30 == 0:
                     try:

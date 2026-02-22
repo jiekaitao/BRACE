@@ -6,7 +6,6 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import DuoButton from "@/components/ui/DuoButton";
 import PathCard from "@/components/ui/PathCard";
-import DemoVideoModal from "@/components/DemoVideoModal";
 import TeamSportBrowser from "@/components/TeamSportBrowser";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -20,8 +19,6 @@ interface CardRect {
 export default function HomePage() {
   const router = useRouter();
   const { user, loading } = useAuth();
-  const [showDemoModal, setShowDemoModal] = useState(false);
-
   // Redirect onboarded users to dashboard
   useEffect(() => {
     if (!loading && user?.injury_profile) {
@@ -86,11 +83,6 @@ export default function HomePage() {
     }, 650);
   }, [isTransitioning]);
 
-  const onDemoSelect = (filename: string) => {
-    setShowDemoModal(false);
-    router.push(`/analyze?mode=demo&video=${encodeURIComponent(filename)}`);
-  };
-
   // Compute animated values: start at card position, expand to fill container
   const collapsedStyle = cardRect
     ? { top: cardRect.top, left: cardRect.left, width: cardRect.width, height: cardRect.height }
@@ -153,15 +145,11 @@ export default function HomePage() {
               Use Webcam
             </DuoButton>
           </Link>
-          <div className="flex-1">
-            <DuoButton
-              variant="secondary"
-              fullWidth
-              onClick={() => setShowDemoModal(true)}
-            >
-              Demo Videos
+          <Link href="/dev/streams" className="flex-1 no-underline">
+            <DuoButton variant="secondary" fullWidth>
+              Debug Streams
             </DuoButton>
-          </div>
+          </Link>
         </div>
 
         {/* Tech stack link */}
@@ -201,13 +189,6 @@ export default function HomePage() {
         </AnimatePresence>
       </div>
 
-      {/* Demo video modal */}
-      {showDemoModal && (
-        <DemoVideoModal
-          onSelect={onDemoSelect}
-          onClose={() => setShowDemoModal(false)}
-        />
-      )}
     </div>
   );
 }

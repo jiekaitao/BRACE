@@ -94,6 +94,101 @@ def _encode_crop_jpeg(crop: np.ndarray, max_dim: int = 256) -> bytes:
     return buf.tobytes()
 
 
+@dataclass
+class TeamClustering:
+    """Result of visual K-Means team clustering."""
+    assignments: dict[int, int]  # subject_id → team_id (0 or 1)
+    team_colors: dict[int, str]  # team_id → hex color string
+
+
+def _hsv_histogram(crop: np.ndarray, hue_bins: int = 16, sat_bins: int = 8) -> np.ndarray | None:
+    """Extract a normalized HS histogram from the upper 60% of a crop.
+
+    Returns a flat (hue_bins * sat_bins,) array, or None if the crop is too small.
+    """
+    h, w = crop.shape[:2]
+    if h < 30 or w < 30:
+        return None
+    # Upper 60% — torso region, skip legs/feet
+    torso = crop[: int(h * 0.6), :]
+    hsv = cv2.cvtColor(torso, cv2.COLOR_RGB2HSV)
+    hist = cv2.calcHist(
+        [hsv], [0, 1], None,
+        [hue_bins, sat_bins],
+        [0, 180, 0, 256],
+    )
+    hist = hist.flatten().astype(np.float32)
+    total = hist.sum()
+    if total > 0:
+        hist /= total
+    return hist
+
+
+def cluster_teams_visual(crops: dict[int, np.ndarray], k: int = 2) -> TeamClustering | None:
+    """Cluster subjects into teams using K-Means on HSV color histograms.
+
+    Args:
+        crops: Mapping of subject_id → RGB crop image.
+        k: Number of teams (default 2).
+
+    Returns:
+        TeamClustering with assignments and representative hex colors,
+        or None if fewer than k valid crops.
+    """
+    from sklearn.cluster import KMeans
+
+    sids: list[int] = []
+    features: list[np.ndarray] = []
+    crop_list: list[np.ndarray] = []
+
+    for sid, crop in crops.items():
+        feat = _hsv_histogram(crop)
+        if feat is not None:
+            sids.append(sid)
+            features.append(feat)
+            crop_list.append(crop)
+
+    if len(features) < k:
+        return None
+
+    X = np.stack(features)
+    km = KMeans(n_clusters=k, n_init=10, random_state=42)
+    labels = km.fit_predict(X)
+
+    assignments: dict[int, int] = {}
+    for i, sid in enumerate(sids):
+        assignments[sid] = int(labels[i])
+
+    # Derive representative hex color per team from mean HSV of torso pixels
+    team_colors: dict[int, str] = {}
+    for team_id in range(k):
+        h_sum, s_sum, v_sum, count = 0.0, 0.0, 0.0, 0
+        for i, sid in enumerate(sids):
+            if labels[i] != team_id:
+                continue
+            crop = crop_list[i]
+            torso = crop[: int(crop.shape[0] * 0.6), :]
+            hsv = cv2.cvtColor(torso, cv2.COLOR_RGB2HSV)
+            h_sum += hsv[:, :, 0].mean()
+            s_sum += hsv[:, :, 1].mean()
+            v_sum += hsv[:, :, 2].mean()
+            count += 1
+        if count > 0:
+            mean_h = int(h_sum / count)
+            mean_s = int(s_sum / count)
+            mean_v = int(v_sum / count)
+            # Convert single HSV pixel to RGB to get hex
+            hsv_pixel = np.array([[[mean_h, mean_s, mean_v]]], dtype=np.uint8)
+            rgb_pixel = cv2.cvtColor(hsv_pixel, cv2.COLOR_HSV2RGB)[0, 0]
+            team_colors[team_id] = "#{:02x}{:02x}{:02x}".format(
+                int(rgb_pixel[0]), int(rgb_pixel[1]), int(rgb_pixel[2])
+            )
+        else:
+            team_colors[team_id] = "#999999"
+
+    return TeamClustering(assignments=assignments, team_colors=team_colors)
+
+
 def cluster_teams(jerseys: dict[int, JerseyInfo]) -> dict[str, list[int]]:
     """Cluster subjects into teams based on jersey color.
 
