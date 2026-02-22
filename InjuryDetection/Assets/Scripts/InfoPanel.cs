@@ -1,24 +1,49 @@
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 /// <summary>
-/// World-space stats panel showing real-time BRACE analysis for the selected subject.
-/// Spawns in front of the user on selection, live-updates at 4Hz from WebSocket data.
-/// Auto-finds BraceWebSocket if not assigned in Inspector.
+/// Head-locked stats panel positioned below eye level.
+/// Shows real-time BRACE analysis for the selected subject.
+/// Follows the user's head movement so it stays visible but out of the way.
+/// Click a bounding box to show that player's stats; click empty space to hide.
 /// </summary>
 public class InfoPanel : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private BraceWebSocket braceWs;
 
-    [Header("Layout")]
-    [SerializeField] private float displayDistance = 1.5f;
-    [SerializeField] private int titleFontSize = 40;
-    [SerializeField] private int bodyFontSize = 28;
+    [Header("Display")]
+    [SerializeField] private float hudDistance = 2f;
+
+    [Tooltip("Vertical offset below eye level (positive = further down)")]
+    [SerializeField] private float downOffset = 1.1f;
+
+    [Tooltip("Horizontal offset to the right (positive = further right)")]
+    [SerializeField] private float rightOffset = 0.55f;
+
+    [Tooltip("TMP font size for title")]
+    [SerializeField] private float titleFontSize = 56f;
+
+    [Tooltip("TMP font size for body text")]
+    [SerializeField] private float bodyFontSize = 44f;
+
+    [Tooltip("World scale of the canvas")]
+    [SerializeField] private float canvasWorldScale = 0.0018f;
+
+    [Tooltip("Panel size in canvas units")]
+    [SerializeField] private Vector2 panelSize = new Vector2(650, 500);
+
+    [Tooltip("Panel background alpha (0..1)")]
+    [Range(0f, 1f)]
+    [SerializeField] private float backgroundAlpha = 0.8f;
+
+    [Tooltip("Higher = crisper in world space")]
+    [SerializeField] private float dynamicPixelsPerUnit = 40f;
 
     private Canvas _canvas;
-    private Text _titleText;
-    private Text _bodyText;
+    private TextMeshProUGUI _titleText;
+    private TextMeshProUGUI _bodyText;
     private Transform _cameraAnchor;
 
     private string _selectedSubjectId;
@@ -50,15 +75,30 @@ public class InfoPanel : MonoBehaviour
 
     private void Update()
     {
-        if (_selectedSubjectId == null || braceWs == null) return;
-        if (Time.time - _lastUpdateTime < UPDATE_INTERVAL) return;
+        if (_canvas == null || _cameraAnchor == null) return;
+        if (_selectedSubjectId == null) return;
 
+        // Reposition: below eye level, offset right (side-by-side with DebugHUD on left)
+        Vector3 forward = _cameraAnchor.forward;
+        Vector3 down = -_cameraAnchor.up * downOffset;
+        Vector3 right = _cameraAnchor.right * rightOffset;
+
+        _canvas.transform.position = _cameraAnchor.position + forward * hudDistance + down + right;
+
+        // Face the camera (billboard)
+        _canvas.transform.rotation = Quaternion.LookRotation(
+            _canvas.transform.position - _cameraAnchor.position
+        );
+
+        // Update content at 4Hz
+        if (Time.time - _lastUpdateTime < UPDATE_INTERVAL) return;
+        _lastUpdateTime = Time.time;
+
+        if (braceWs == null) return;
         var response = braceWs.LatestResponse;
         if (response?.subjects == null) return;
         if (!response.subjects.TryGetValue(_selectedSubjectId, out var data)) return;
-        if (!data.selected) return;
 
-        _lastUpdateTime = Time.time;
         UpdateContent(data);
     }
 
@@ -73,10 +113,6 @@ public class InfoPanel : MonoBehaviour
 
         _selectedSubjectId = box.subjectId;
 
-        var ct = _canvas.transform;
-        ct.position = _cameraAnchor.position + _cameraAnchor.forward * displayDistance;
-        ct.rotation = Quaternion.LookRotation(ct.position - _cameraAnchor.position);
-
         _titleText.text = box.latestData?.label ?? box.subjectId;
         if (box.latestData != null)
             UpdateContent(box.latestData);
@@ -88,11 +124,13 @@ public class InfoPanel : MonoBehaviour
 
     private void UpdateContent(SubjectData data)
     {
+        // Title
         string activity = GetActivityLabel(data);
         _titleText.text = activity != null
             ? $"{data.label}  -  {activity}"
             : data.label ?? "";
 
+        // Body
         var sb = new System.Text.StringBuilder();
 
         if (data.quality?.movement_phase != null)
@@ -108,8 +146,9 @@ public class InfoPanel : MonoBehaviour
         if (data.quality != null)
         {
             int form = Mathf.RoundToInt(data.quality.form_score);
+            string formColor = form >= 80 ? "#00ff00" : form >= 60 ? "#ffcc00" : "#ff3333";
             string formLabel = form >= 80 ? "Good" : form >= 60 ? "Fair" : "Poor";
-            sb.AppendLine($"Form: {form}/100  ({formLabel})");
+            sb.AppendLine($"Form: <color={formColor}>{form}/100  ({formLabel})</color>");
         }
 
         sb.AppendLine();
@@ -117,34 +156,35 @@ public class InfoPanel : MonoBehaviour
         if (data.quality?.biomechanics != null)
         {
             var bio = data.quality.biomechanics;
-            sb.AppendLine("-- Biomechanics --");
-            sb.AppendLine($"Knee Angle (FPPA):  L {bio.fppa_left:F1}   R {bio.fppa_right:F1}");
-            sb.AppendLine($"Hip Drop: {bio.hip_drop:F1}    Trunk Lean: {bio.trunk_lean:F1}");
+            sb.AppendLine("<color=#88ccff>-- Biomechanics --</color>");
+            sb.AppendLine($"Knee (FPPA):  L {bio.fppa_left:F1}°   R {bio.fppa_right:F1}°");
+            sb.AppendLine($"Hip Drop: {bio.hip_drop:F1}°    Trunk Lean: {bio.trunk_lean:F1}°");
             sb.AppendLine($"Asymmetry: {bio.asymmetry:F1}%");
         }
 
         if (data.quality?.injury_risks != null && data.quality.injury_risks.Count > 0)
         {
             sb.AppendLine();
-            sb.AppendLine("-- Injury Risks --");
+            sb.AppendLine("<color=#ff6666>-- Injury Risks --</color>");
             foreach (var risk in data.quality.injury_risks)
             {
-                string icon = risk.severity == "high" ? "!!" : "! ";
-                sb.AppendLine($"{icon} {FormatRiskName(risk.risk)} ({risk.joint})  [{risk.severity}]");
+                string sevColor = risk.severity == "high" ? "#ff3333" : "#ffcc00";
+                sb.AppendLine($"<color={sevColor}>{FormatRiskName(risk.risk)}</color> ({risk.joint})  [{risk.severity}]");
             }
         }
 
         if (data.fatigue_index > 0.01f)
         {
             sb.AppendLine();
-            sb.AppendLine($"Fatigue: {data.fatigue_index:P0}");
+            string fatColor = data.fatigue_index > 0.6f ? "#ff3333" : data.fatigue_index > 0.3f ? "#ffcc00" : "#00ff00";
+            sb.AppendLine($"Fatigue: <color={fatColor}>{data.fatigue_index:P0}</color>");
         }
 
         if (data.quality?.active_guideline?.form_cues != null
             && data.quality.active_guideline.form_cues.Count > 0)
         {
             sb.AppendLine();
-            sb.AppendLine("-- Tips --");
+            sb.AppendLine("<color=#88ccff>-- Tips --</color>");
             foreach (var cue in data.quality.active_guideline.form_cues)
                 sb.AppendLine($"  {cue}");
         }
@@ -152,7 +192,7 @@ public class InfoPanel : MonoBehaviour
         if (!string.IsNullOrEmpty(data.alert_text))
         {
             sb.AppendLine();
-            sb.AppendLine($">> {data.alert_text}");
+            sb.AppendLine($"<color=#ffcc00>>> {data.alert_text}</color>");
         }
 
         _bodyText.text = sb.ToString();
@@ -197,62 +237,72 @@ public class InfoPanel : MonoBehaviour
     private void CreatePanel()
     {
         var canvasObj = new GameObject("InfoPanelCanvas");
-        canvasObj.transform.SetParent(transform);
+        canvasObj.transform.SetParent(transform, false);
+
         _canvas = canvasObj.AddComponent<Canvas>();
         _canvas.renderMode = RenderMode.WorldSpace;
 
         var scaler = canvasObj.AddComponent<CanvasScaler>();
-        scaler.dynamicPixelsPerUnit = 10f;
-        canvasObj.AddComponent<GraphicRaycaster>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+        scaler.dynamicPixelsPerUnit = dynamicPixelsPerUnit;
 
         var rt = _canvas.GetComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(650, 800);
-        rt.localScale = Vector3.one * 0.001f;
+        rt.sizeDelta = panelSize;
+        rt.localScale = Vector3.one * canvasWorldScale;
 
-        var bgObj = new GameObject("Background");
+        var raycaster = canvasObj.AddComponent<GraphicRaycaster>();
+        raycaster.enabled = false;
+
+        // Semi-transparent background
+        var bgObj = new GameObject("BG");
         bgObj.transform.SetParent(canvasObj.transform, false);
+
         var bgRect = bgObj.AddComponent<RectTransform>();
         bgRect.anchorMin = Vector2.zero;
         bgRect.anchorMax = Vector2.one;
         bgRect.offsetMin = Vector2.zero;
         bgRect.offsetMax = Vector2.zero;
-        var bgImage = bgObj.AddComponent<Image>();
-        bgImage.color = new Color(0.05f, 0.05f, 0.05f, 0.85f);
 
+        var bgImage = bgObj.AddComponent<Image>();
+        bgImage.color = new Color(0.05f, 0.05f, 0.1f, backgroundAlpha);
+
+        // Title (TextMeshPro)
         var titleObj = new GameObject("Title");
         titleObj.transform.SetParent(canvasObj.transform, false);
-        _titleText = titleObj.AddComponent<Text>();
-        _titleText.font = GetFont();
+
+        _titleText = titleObj.AddComponent<TextMeshProUGUI>();
+        _titleText.enableWordWrapping = false;
+        _titleText.richText = true;
         _titleText.fontSize = titleFontSize;
-        _titleText.fontStyle = FontStyle.Bold;
-        _titleText.color = new Color(0.345f, 0.8f, 0.008f);
-        _titleText.alignment = TextAnchor.MiddleCenter;
+        _titleText.fontStyle = FontStyles.Bold;
+        _titleText.color = new Color(0.345f, 0.8f, 0.008f); // green #58CC02
+        _titleText.alignment = TextAlignmentOptions.Center;
+        _titleText.extraPadding = true;
+        _titleText.isOrthographic = true;
+
         var titleRect = _titleText.GetComponent<RectTransform>();
         titleRect.anchorMin = new Vector2(0, 0.88f);
         titleRect.anchorMax = new Vector2(1, 0.98f);
-        titleRect.offsetMin = new Vector2(20, 0);
-        titleRect.offsetMax = new Vector2(-20, 0);
+        titleRect.offsetMin = new Vector2(18, 0);
+        titleRect.offsetMax = new Vector2(-18, 0);
 
+        // Body (TextMeshPro)
         var bodyObj = new GameObject("Body");
         bodyObj.transform.SetParent(canvasObj.transform, false);
-        _bodyText = bodyObj.AddComponent<Text>();
-        _bodyText.font = _titleText.font;
+
+        _bodyText = bodyObj.AddComponent<TextMeshProUGUI>();
+        _bodyText.enableWordWrapping = true;
+        _bodyText.richText = true;
         _bodyText.fontSize = bodyFontSize;
         _bodyText.color = Color.white;
-        _bodyText.alignment = TextAnchor.UpperLeft;
-        _bodyText.lineSpacing = 1.1f;
+        _bodyText.alignment = TextAlignmentOptions.TopLeft;
+        _bodyText.extraPadding = true;
+        _bodyText.isOrthographic = true;
+
         var bodyRect = _bodyText.GetComponent<RectTransform>();
         bodyRect.anchorMin = new Vector2(0, 0.02f);
         bodyRect.anchorMax = new Vector2(1, 0.86f);
-        bodyRect.offsetMin = new Vector2(30, 0);
-        bodyRect.offsetMax = new Vector2(-30, 0);
-    }
-
-    private static Font GetFont()
-    {
-        var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        if (font == null)
-            font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        return font;
+        bodyRect.offsetMin = new Vector2(24, 14);
+        bodyRect.offsetMax = new Vector2(-24, -14);
     }
 }

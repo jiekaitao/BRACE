@@ -37,7 +37,7 @@ public class FrameCapture : MonoBehaviour
     private int _nonBlackPixels;
     private int _totalSampled;
     private int _blackFrameCount;
-    private int _currentCameraIndex;
+    private int _currentCameraIndex = 1;
     private int _totalCameras;
     private bool _triedAllCameras;
     private string _permissionStatus = "unknown";

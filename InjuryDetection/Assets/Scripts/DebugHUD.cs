@@ -18,17 +18,23 @@ public class DebugHUD : MonoBehaviour
     [SerializeField] private bool showHUD = true;
     [SerializeField] private float hudDistance = 2f;
 
+    [Tooltip("Vertical offset below eye level (positive = further down)")]
+    [SerializeField] private float downOffset = 1.1f;
+
+    [Tooltip("Horizontal offset to the left (positive = further left)")]
+    [SerializeField] private float leftOffset = 0.55f;
+
     [Tooltip("TMP font size. TMP stays crisp at high sizes in VR.")]
-    [SerializeField] private float fontSize = 48f;
+    [SerializeField] private float fontSize = 36f;
 
     [Tooltip("World scale of the canvas. Increase if HUD is too small in headset.")]
-    [SerializeField] private float canvasWorldScale = 0.0022f;
+    [SerializeField] private float canvasWorldScale = 0.0018f;
 
     [Tooltip("Higher = crisper in world space, but slightly more expensive.")]
     [SerializeField] private float dynamicPixelsPerUnit = 40f;
 
     [Tooltip("Panel size in canvas units (not meters).")]
-    [SerializeField] private Vector2 panelSize = new Vector2(900, 600);
+    [SerializeField] private Vector2 panelSize = new Vector2(650, 500);
 
     [Tooltip("Panel background alpha (0..1).")]
     [Range(0f, 1f)]
@@ -64,10 +70,10 @@ public class DebugHUD : MonoBehaviour
         if (Time.time - _lastUpdateTime < 0.25f) return;
         _lastUpdateTime = Time.time;
 
-        // Reposition: lower-left of view, always follows head
+        // Reposition: below eye level, offset left (side-by-side with InfoPanel on right)
         Vector3 forward = _cameraAnchor.forward;
-        Vector3 down = -_cameraAnchor.up * 0.4f;
-        Vector3 left = -_cameraAnchor.right * 0.35f;
+        Vector3 down = -_cameraAnchor.up * downOffset;
+        Vector3 left = -_cameraAnchor.right * leftOffset;
 
         _canvas.transform.position = _cameraAnchor.position + forward * hudDistance + down + left;
 
