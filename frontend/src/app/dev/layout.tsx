@@ -8,6 +8,7 @@ const DEV_PAGES = [
   { href: "/dev/chat", label: "Chat" },
   { href: "/dev/components", label: "Components" },
   { href: "/dev/risk-profile", label: "Risk Profile" },
+  { href: "/dev/streams", label: "Streams" },
   { href: "/dev/voice", label: "Voice" },
   { href: "/dev/timeline", label: "Timeline" },
 ];

@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useMemo } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { useRef, useMemo, useState } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { OrbitControls, Html } from "@react-three/drei";
 import * as THREE from "three";
 import type { SubjectState } from "@/lib/types";
 import { CLUSTER_COLORS, PHASE_COLORS } from "@/lib/colors";
+import { jerseyDisplayColor } from "@/lib/colors";
 import Card from "./ui/Card";
 
 interface EmbeddingGraphProps {
@@ -14,6 +15,7 @@ interface EmbeddingGraphProps {
   highlightedClusterRef: React.MutableRefObject<number | null>;
   nSegments?: number;
   nClusters?: number;
+  showJerseyColors?: boolean;
 }
 
 const MAX_POINTS = 4000;
@@ -32,11 +34,21 @@ function getColor(hex: string): THREE.Color {
   return c;
 }
 
+/** Darken a THREE.Color by a factor (0-1). */
+function darkenColor(color: THREE.Color, factor: number): THREE.Color {
+  const c = color.clone();
+  c.r *= factor;
+  c.g *= factor;
+  c.b *= factor;
+  return c;
+}
+
 /** Instanced point cloud for all embedding points. */
 function PointCloud({
   subjectsRef,
   selectedSubjectRef,
   highlightedClusterRef,
+  showJerseyColors,
 }: EmbeddingGraphProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
@@ -49,6 +61,11 @@ function PointCloud({
   const pulseRef = useRef(0);
   const targetPos = useMemo(() => new THREE.Vector3(), []);
 
+  // Hover state for popover
+  const { raycaster, pointer } = useThree();
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const hoveredPosRef = useRef(new THREE.Vector3());
+
   useFrame(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
@@ -58,6 +75,7 @@ function PointCloud({
       mesh.count = 0;
       if (currentRef.current) currentRef.current.visible = false;
       if (ringRef.current) ringRef.current.visible = false;
+      setHoveredIdx(null);
       return;
     }
 
@@ -66,6 +84,7 @@ function PointCloud({
       mesh.count = 0;
       if (currentRef.current) currentRef.current.visible = false;
       if (ringRef.current) ringRef.current.visible = false;
+      setHoveredIdx(null);
       return;
     }
 
@@ -75,6 +94,7 @@ function PointCloud({
       mesh.count = 0;
       if (currentRef.current) currentRef.current.visible = false;
       if (ringRef.current) ringRef.current.visible = false;
+      setHoveredIdx(null);
       return;
     }
 
@@ -105,6 +125,11 @@ function PointCloud({
     const count = Math.min(points.length, MAX_POINTS);
     mesh.count = count;
 
+    // Jersey color mode: use darkened jersey color for all points
+    const useJersey = showJerseyColors && subject.jerseyColor;
+    const jerseyBase = useJersey ? getColor(jerseyDisplayColor(subject.jerseyColor)) : null;
+    const jerseyDark = jerseyBase ? darkenColor(jerseyBase, 0.7) : null;
+
     for (let i = 0; i < count; i++) {
       const p = points[i];
       const x = (p[0] - cx) * scale;
@@ -114,7 +139,15 @@ function PointCloud({
       const cid = clusterIds[i];
       let radius = POINT_RADIUS;
 
-      if (highlightCid !== null) {
+      if (useJersey && jerseyDark) {
+        // Jersey color mode
+        if (i === currentIdx) {
+          tempColor.copy(jerseyBase!);
+          radius = POINT_RADIUS * 1.5;
+        } else {
+          tempColor.copy(jerseyDark);
+        }
+      } else if (highlightCid !== null) {
         if (cid === highlightCid) {
           tempColor.copy(
             cid !== null && cid !== undefined
@@ -144,6 +177,28 @@ function PointCloud({
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 
+    // Hover detection via raycasting (only in debug/jersey mode)
+    if (showJerseyColors) {
+      raycaster.setFromCamera(pointer, raycaster.camera);
+      const intersects = raycaster.intersectObject(mesh);
+      if (intersects.length > 0 && intersects[0].instanceId !== undefined) {
+        const idx = intersects[0].instanceId;
+        setHoveredIdx(idx);
+        const p = points[idx];
+        if (p) {
+          hoveredPosRef.current.set(
+            (p[0] - cx) * scale,
+            (p[1] - cy) * scale,
+            (p[2] - cz) * scale,
+          );
+        }
+      } else {
+        setHoveredIdx(null);
+      }
+    } else {
+      if (hoveredIdx !== null) setHoveredIdx(null);
+    }
+
     // Current position
     if (currentIdx >= 0 && currentIdx < points.length) {
       const cp = points[currentIdx];
@@ -157,7 +212,7 @@ function PointCloud({
         targetPos.set(cx2, cy2, cz2);
         currentRef.current.position.lerp(targetPos, 0.15);
         const mat = currentRef.current.material as THREE.MeshStandardMaterial;
-        mat.color.copy(phaseColor);
+        mat.color.copy(useJersey && jerseyBase ? jerseyBase : phaseColor);
       }
 
       if (ringRef.current) {
@@ -167,7 +222,7 @@ function PointCloud({
         const pulse = Math.sin(pulseRef.current) * 0.3 + 0.7;
         ringRef.current.scale.setScalar(pulse);
         const ringMat = ringRef.current.material as THREE.MeshBasicMaterial;
-        ringMat.color.copy(phaseColor);
+        ringMat.color.copy(useJersey && jerseyBase ? jerseyBase : phaseColor);
         ringMat.opacity = pulse * 0.5;
       }
     } else {
@@ -178,6 +233,10 @@ function PointCloud({
 
   const sphereGeo = useMemo(() => new THREE.SphereGeometry(POINT_RADIUS, 8, 8), []);
   const pointMat = useMemo(() => new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.1 }), []);
+
+  // Get hover popover data
+  const selectedId = selectedSubjectRef.current;
+  const subject = selectedId !== null ? subjectsRef.current.get(selectedId) : undefined;
 
   return (
     <>
@@ -196,17 +255,44 @@ function PointCloud({
         <sphereGeometry args={[CURRENT_RADIUS * 1.8, 16, 16]} />
         <meshBasicMaterial transparent opacity={0.3} wireframe />
       </mesh>
+      {/* Hover popover (debug mode only) */}
+      {showJerseyColors && hoveredIdx !== null && subject && (
+        <Html
+          position={[hoveredPosRef.current.x, hoveredPosRef.current.y + 0.3, hoveredPosRef.current.z]}
+          style={{ pointerEvents: "none" }}
+        >
+          <div className="bg-black/85 text-white text-[10px] rounded-lg px-2 py-1.5 whitespace-nowrap max-w-[200px]">
+            <div className="font-bold">Point {hoveredIdx}</div>
+            {subject.embedding.clusterIds[hoveredIdx] != null && (
+              <div>Cluster {subject.embedding.clusterIds[hoveredIdx]}</div>
+            )}
+            {subject.jerseyNumber != null && (
+              <div>
+                Jersey #{subject.jerseyNumber}
+                {subject.jerseyColor && (
+                  <span
+                    className="inline-block w-2.5 h-2.5 rounded-full ml-1 align-middle"
+                    style={{ backgroundColor: jerseyDisplayColor(subject.jerseyColor) }}
+                  />
+                )}
+              </div>
+            )}
+            {subject.jerseyCropBase64 && (
+              <img
+                src={`data:image/jpeg;base64,${subject.jerseyCropBase64}`}
+                alt="crop"
+                className="mt-1 rounded max-w-[120px]"
+              />
+            )}
+            {subject.jerseyGeminiResponse && (
+              <div className="mt-0.5 text-[9px] text-gray-400 break-all">
+                {subject.jerseyGeminiResponse}
+              </div>
+            )}
+          </div>
+        </Html>
+      )}
     </>
-  );
-}
-
-/** Placeholder shown when no data. */
-function PlaceholderSphere() {
-  return (
-    <mesh>
-      <sphereGeometry args={[0.05, 8, 8]} />
-      <meshStandardMaterial color="#AFAFAF" transparent opacity={0.3} />
-    </mesh>
   );
 }
 
@@ -224,6 +310,7 @@ export default function EmbeddingGraph({
   highlightedClusterRef,
   nSegments,
   nClusters,
+  showJerseyColors,
 }: EmbeddingGraphProps) {
   return (
     <Card>
@@ -246,6 +333,7 @@ export default function EmbeddingGraph({
             subjectsRef={subjectsRef}
             selectedSubjectRef={selectedSubjectRef}
             highlightedClusterRef={highlightedClusterRef}
+            showJerseyColors={showJerseyColors}
           />
           <OrbitControls
             enablePan={true}

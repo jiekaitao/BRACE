@@ -56,3 +56,40 @@ const SUBJECT_COLORS = [
 export function getSubjectColor(trackId: number): string {
   return SUBJECT_COLORS[trackId % SUBJECT_COLORS.length];
 }
+
+/** Map jersey color names to CSS hex colors. */
+export const JERSEY_COLOR_MAP: Record<string, string> = {
+  red: "#DC2626",
+  blue: "#2563EB",
+  green: "#16A34A",
+  white: "#E5E7EB",
+  black: "#1F2937",
+  yellow: "#EAB308",
+  orange: "#EA580C",
+  purple: "#9333EA",
+  pink: "#EC4899",
+  gray: "#6B7280",
+  grey: "#6B7280",
+  navy: "#1E3A5F",
+  maroon: "#7F1D1D",
+  gold: "#CA8A04",
+};
+
+/**
+ * Build a jersey tag string, e.g. "G23" (first letter of color + number).
+ * Returns null if no jersey number is available.
+ */
+export function jerseyTagText(
+  jerseyNumber: number | null | undefined,
+  jerseyColor: string | null | undefined,
+): string | null {
+  if (jerseyNumber == null) return null;
+  const prefix = jerseyColor ? jerseyColor.charAt(0).toUpperCase() : "";
+  return `${prefix}${jerseyNumber}`;
+}
+
+/** Look up CSS hex color for a jersey color name, with fallback. */
+export function jerseyDisplayColor(jerseyColor: string | null | undefined): string {
+  if (!jerseyColor) return "#999999";
+  return JERSEY_COLOR_MAP[jerseyColor.toLowerCase()] ?? "#999999";
+}

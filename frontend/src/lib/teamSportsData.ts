@@ -19,4 +19,12 @@ export const SPORTS: Sport[] = [
     id: "soccer",
     name: "Soccer",
   },
+  {
+    id: "large-class",
+    name: "Large Class",
+  },
+  {
+    id: "boxing",
+    name: "Boxing",
+  },
 ];

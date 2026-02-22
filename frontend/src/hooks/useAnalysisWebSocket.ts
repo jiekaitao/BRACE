@@ -407,6 +407,10 @@ export function useAnalysisWebSocket(
               smplFrame: { ...EMPTY_SMPL_FRAME },
               uvTexture: null,
               quality: {},
+              jerseyNumber: null,
+              jerseyColor: null,
+              jerseyCropBase64: null,
+              jerseyGeminiResponse: null,
               replayTimeline: [],
               firstPassVelocityLen: 0,
               lastSeenTime: performance.now(),
@@ -465,6 +469,20 @@ export function useAnalysisWebSocket(
           // Update UV texture
           if (subjectData.uv_texture) {
             state.uvTexture = subjectData.uv_texture;
+          }
+
+          // Update jersey detection data
+          if (subjectData.jersey_number !== undefined) {
+            state.jerseyNumber = subjectData.jersey_number ?? null;
+          }
+          if (subjectData.jersey_color !== undefined) {
+            state.jerseyColor = subjectData.jersey_color ?? null;
+          }
+          if (subjectData.jersey_crop_b64) {
+            state.jerseyCropBase64 = subjectData.jersey_crop_b64;
+          }
+          if (subjectData.jersey_gemini_response) {
+            state.jerseyGeminiResponse = subjectData.jersey_gemini_response;
           }
 
           // Accumulate velocity history (skip during replay — use cached first-pass data)

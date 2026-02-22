@@ -140,6 +140,9 @@ _clip_reid_extractor: EmbeddingExtractor | None = None
 # Store uploaded video paths by session ID
 _uploads: dict[str, Path] = {}
 
+# Active WebSocket stream registry for /api/streams
+_active_streams: dict[str, dict[str, Any]] = {}
+
 DISABLE_REID = os.environ.get("DISABLE_REID", "0") == "1"
 PIPELINE_BACKEND = os.environ.get("PIPELINE_BACKEND", "legacy")
 
@@ -256,6 +259,27 @@ def health():
         "status": "ok",
         "tracker_loaded": pipeline is not None,
     }
+
+
+@app.get("/api/streams")
+def get_active_streams():
+    """Return metadata for all active WebSocket analysis streams."""
+    now = time.time()
+    streams = []
+    for sid, info in list(_active_streams.items()):
+        streams.append({
+            "stream_id": sid,
+            "mode": info.get("mode", "webcam"),
+            "client_type": info.get("client_type", "web"),
+            "connected_at": info.get("connected_at", 0),
+            "uptime_sec": round(now - info.get("connected_at", now), 1),
+            "frame_count": info.get("frame_count", 0),
+            "subject_count": info.get("subject_count", 0),
+            "fps": info.get("fps", 0),
+            "last_thumbnail": info.get("last_thumbnail"),
+            "resolution": info.get("resolution"),
+        })
+    return {"count": len(streams), "streams": streams}
 
 
 @app.get("/api/gpu-stats")
@@ -801,9 +825,23 @@ async def ws_analyze(websocket: WebSocket):
 
     await websocket.accept()
 
+    # Register in active streams
+    stream_id = str(uuid.uuid4())
+    _active_streams[stream_id] = {
+        "mode": mode,
+        "client_type": client_type,
+        "connected_at": time.time(),
+        "frame_count": 0,
+        "subject_count": 0,
+        "fps": target_fps,
+        "last_thumbnail": None,
+        "resolution": None,
+    }
+
     if pipeline is None:
         await websocket.send_json({"type": "error", "message": "Models not loaded"})
         await websocket.close()
+        _active_streams.pop(stream_id, None)
         return
 
     # Try to load user's risk modifiers if user_id provided
@@ -823,10 +861,13 @@ async def ws_analyze(websocket: WebSocket):
         except Exception as e:
             print(f"[ws] Failed to load risk modifiers: {e}", flush=True)
 
-    if mode == "video":
-        await _handle_video_mode(websocket, session_id, cluster_threshold)
-    else:
-        await _handle_webcam_mode(websocket, cluster_threshold, target_fps, risk_modifiers, client_type)
+    try:
+        if mode == "video":
+            await _handle_video_mode(websocket, session_id, cluster_threshold)
+        else:
+            await _handle_webcam_mode(websocket, cluster_threshold, target_fps, risk_modifiers, client_type, stream_id)
+    finally:
+        _active_streams.pop(stream_id, None)
 
 
 async def _handle_video_mode(
@@ -915,7 +956,7 @@ async def _run_analysis_bg(analyzer: "StreamingAnalyzer", subject_id: str) -> No
 
 async def _handle_webcam_mode(
     websocket: WebSocket, cluster_threshold: float, target_fps: float,
-    risk_modifiers: Any = None, client_type: str = "web",
+    risk_modifiers: Any = None, client_type: str = "web", stream_id: str = "",
 ) -> None:
     """Process live webcam frames with multi-person tracking + pose estimation."""
     session_id = str(uuid.uuid4())  # unique per-session for VectorAI tracking
@@ -938,6 +979,17 @@ async def _handle_webcam_mode(
     gemini: GeminiActivityClassifier | None = None
     if _GEMINI_AVAILABLE:
         gemini = GeminiActivityClassifier()
+
+    # Jersey detection for real-time mode
+    jersey_detector: JerseyDetector | None = None
+    if _JERSEY_DETECTOR_AVAILABLE and _GEMINI_AVAILABLE:
+        jersey_detector = JerseyDetector()
+    jersey_last_detect_time: float = 0.0
+    _JERSEY_INITIAL_DELAY = 3.0   # seconds before first detection
+    _JERSEY_REDETECT_INTERVAL = 30.0  # seconds between re-detections
+    jersey_debug_cache: dict[int, dict] = {}  # subject_id -> {"crop_b64": str, "gemini_response": str}
+    jersey_detect_pending: bool = False
+    jersey_session_start: float = time.monotonic()
 
     # Ring buffer of recent RGB frames for Gemini classification
     frame_buffer: dict[int, np.ndarray] = {}
@@ -1086,6 +1138,76 @@ async def _handle_webcam_mode(
 
             t_resolve = time.monotonic()
 
+            # Step 1.6: Jersey detection (periodic, background)
+            if (
+                jersey_detector is not None
+                and jersey_detector.available
+                and not jersey_detect_pending
+                and results
+                and resolver is not None
+            ):
+                elapsed_since_start = time.monotonic() - jersey_session_start
+                elapsed_since_detect = time.monotonic() - jersey_last_detect_time
+                should_detect = (
+                    (jersey_last_detect_time == 0.0 and elapsed_since_start >= _JERSEY_INITIAL_DELAY)
+                    or (jersey_last_detect_time > 0.0 and elapsed_since_detect >= _JERSEY_REDETECT_INTERVAL)
+                )
+                if should_detect:
+                    jersey_detect_pending = True
+                    jersey_last_detect_time = time.monotonic()
+
+                    # Collect crops for subjects without jersey info
+                    crops_to_detect: dict[int, np.ndarray] = {}
+                    for pr_item in results:
+                        tid = pr_item.track_id
+                        sid = resolver._track_to_subject.get(tid, tid) if resolver else tid
+                        gallery = resolver._galleries.get(sid) if resolver else None
+                        if gallery is not None and gallery.jersey_number is not None:
+                            continue  # already detected
+                        nb = pr_item.bbox_normalized
+                        x1_px = max(0, int(nb[0] * w))
+                        y1_px = max(0, int(nb[1] * h))
+                        x2_px = min(w, int(nb[2] * w))
+                        y2_px = min(h, int(nb[3] * h))
+                        if x2_px > x1_px and y2_px > y1_px:
+                            crops_to_detect[sid] = rgb[y1_px:y2_px, x1_px:x2_px].copy()
+
+                    if crops_to_detect:
+                        def _run_jersey_detection(
+                            det=jersey_detector,
+                            crops=crops_to_detect,
+                            res=resolver,
+                            mgr=manager,
+                            cache=jersey_debug_cache,
+                        ):
+                            try:
+                                results_j = det.detect_batch(crops)
+                                for sid, info in results_j.items():
+                                    res.set_jersey(sid, number=info.number, color=info.color)
+                                    # Cache crop + response for debug
+                                    crop = crops.get(sid)
+                                    if crop is not None:
+                                        from jersey_detector import _encode_crop_jpeg
+                                        crop_b64 = base64.b64encode(_encode_crop_jpeg(crop)).decode()
+                                        response_str = json.dumps({"number": info.number, "color": info.color})
+                                        cache[sid] = {"crop_b64": crop_b64, "gemini_response": response_str}
+                                # Merge subjects with same jersey
+                                merges = res.merge_by_jersey()
+                                for from_id, to_id in merges:
+                                    mgr.merge_subject(from_id, to_id)
+                                    print(f"[jersey] merged S{from_id} -> S{to_id}", flush=True)
+                            except Exception as e:
+                                print(f"[jersey] detection error: {e}", flush=True)
+
+                        def _jersey_done(*_):
+                            nonlocal jersey_detect_pending
+                            jersey_detect_pending = False
+
+                        fut = asyncio.ensure_future(loop.run_in_executor(_executor, _run_jersey_detection))
+                        fut.add_done_callback(_jersey_done)
+                    else:
+                        jersey_detect_pending = False
+
             # Step 2: Process through analyzers
             subjects_data: dict[str, dict[str, Any]] = {}
 
@@ -1197,6 +1319,18 @@ async def _handle_webcam_mode(
                         analysis_tasks.add(task)
                         task.add_done_callback(lambda t: analysis_tasks.discard(t))
 
+                # Gemini activity classification for unlabeled clusters
+                if gemini is not None and gemini.available:
+                    for cid in analyzer.get_clusters_needing_classification():
+                        analyzer.mark_classification_pending(cid)
+                        asyncio.ensure_future(
+                            loop.run_in_executor(
+                                _executor,
+                                _classify_cluster_webcam,
+                                analyzer, cid, gemini,
+                            )
+                        )
+
                 # Handle UMAP embedding (non-blocking: refit runs in background)
                 embedding_update = None
 
@@ -1253,6 +1387,21 @@ async def _handle_webcam_mode(
                 }
                 if "quality" in response:
                     subject_out["quality"] = response["quality"]
+
+                # Jersey detection results
+                if resolver is not None:
+                    gallery = resolver._galleries.get(subject_id)
+                    if gallery is not None:
+                        if gallery.jersey_number is not None:
+                            subject_out["jersey_number"] = gallery.jersey_number
+                        if gallery.jersey_color is not None:
+                            subject_out["jersey_color"] = gallery.jersey_color
+                # Jersey debug info (only when newly available, not every frame)
+                debug_info = jersey_debug_cache.pop(subject_id, None)
+                if debug_info is not None:
+                    subject_out["jersey_crop_b64"] = debug_info["crop_b64"]
+                    subject_out["jersey_gemini_response"] = debug_info["gemini_response"]
+
                 if embedding_update is not None:
                     subject_out["embedding_update"] = embedding_update
                 if "cluster_representatives" in response:
@@ -1309,6 +1458,23 @@ async def _handle_webcam_mode(
                     "timing": timing_dict,
                     "gemini_stats": gemini.get_stats() if gemini is not None else None,
                 })
+
+            # Update active stream registry (every 30 frames to avoid overhead)
+            if stream_id and stream_id in _active_streams:
+                info = _active_streams[stream_id]
+                info["frame_count"] = frame_idx
+                info["subject_count"] = len(active_ids)
+                if info["resolution"] is None:
+                    info["resolution"] = [w, h]
+                # Generate thumbnail every 30 frames (~1s)
+                if frame_idx % 30 == 0:
+                    try:
+                        thumb = cv2.resize(rgb, (160, 120))
+                        _, buf = cv2.imencode(".jpg", cv2.cvtColor(thumb, cv2.COLOR_RGB2BGR),
+                                              [cv2.IMWRITE_JPEG_QUALITY, 50])
+                        info["last_thumbnail"] = base64.b64encode(buf.tobytes()).decode()
+                    except Exception:
+                        pass
 
             # Log timing every 30 frames
             if frame_idx % 30 == 0 and frame_idx > 0:
