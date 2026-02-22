@@ -365,6 +365,25 @@ def get_stream_data(stream_id: str):
     }
 
 
+@app.get("/api/streams/{stream_id}/vr-debug")
+def get_stream_vr_debug(stream_id: str):
+    """Return the exact VR response JSON that the Quest 3 headset receives.
+
+    Useful for debugging deserialization issues on the VR client.
+    """
+    info = _active_streams.get(stream_id)
+    if info is None:
+        return Response(status_code=404, content="Stream not found")
+    vr_json = info.get("_last_vr_json")
+    if vr_json is None:
+        return {"error": "No VR response yet (not a VR stream?)"}
+    return Response(
+        content=vr_json,
+        media_type="application/json",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/api/gpu-stats")
 def gpu_stats():
     """Return GPU utilization, VRAM, temperature, and power draw."""
@@ -1135,6 +1154,112 @@ async def _handle_video_mode(
             pass
 
 
+def _safe_float(v: Any, default: float = 0.0) -> float:
+    """Convert to Python float, replacing NaN/Inf/numpy with default."""
+    try:
+        f = float(v)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (TypeError, ValueError):
+        return default
+
+
+def _strip_quality_for_vr(quality: dict[str, Any]) -> dict[str, Any]:
+    """Strip quality dict to only fields needed by VR InfoPanel (C# BraceData.cs).
+
+    This dramatically reduces response size and ensures all values are
+    Python native types (no numpy) for reliable JSON serialization and
+    Newtonsoft.Json deserialization on Quest 3.
+    """
+    vr_q: dict[str, Any] = {}
+
+    # Form score (float)
+    if "form_score" in quality:
+        vr_q["form_score"] = round(_safe_float(quality["form_score"]), 1)
+
+    # Movement phase (dict with label, progress, cycle_count)
+    if "movement_phase" in quality and quality["movement_phase"] is not None:
+        mp = quality["movement_phase"]
+        vr_q["movement_phase"] = {
+            "label": str(mp.get("label", "")),
+            "progress": round(_safe_float(mp.get("progress", 0)), 3),
+            "cycle_count": int(mp.get("cycle_count", 0)),
+        }
+
+    # Biomechanics (only fields InfoPanel reads + angular_velocities for completeness)
+    if "biomechanics" in quality and quality["biomechanics"] is not None:
+        bio = quality["biomechanics"]
+        vr_bio: dict[str, Any] = {
+            "fppa_left": round(_safe_float(bio.get("fppa_left", 0)), 1),
+            "fppa_right": round(_safe_float(bio.get("fppa_right", 0)), 1),
+            "hip_drop": round(_safe_float(bio.get("hip_drop", 0)), 1),
+            "trunk_lean": round(_safe_float(bio.get("trunk_lean", 0)), 1),
+            "asymmetry": round(_safe_float(bio.get("asymmetry", 0)), 1),
+            "curvature": round(_safe_float(bio.get("curvature", 0)), 4),
+            "jerk": round(_safe_float(bio.get("jerk", 0)), 4),
+            "anomaly_score": round(_safe_float(bio.get("anomaly_score", 0)), 3),
+            "com_velocity": round(_safe_float(bio.get("com_velocity", 0)), 3),
+            "com_sway": round(_safe_float(bio.get("com_sway", 0)), 3),
+        }
+        # Angular velocities — keep but ensure native types
+        if "angular_velocities" in bio and bio["angular_velocities"]:
+            vr_bio["angular_velocities"] = {
+                str(k): round(_safe_float(v), 1)
+                for k, v in bio["angular_velocities"].items()
+            }
+        vr_q["biomechanics"] = vr_bio
+
+    # Injury risks (list of dicts with joint, risk, severity, value, threshold)
+    if "injury_risks" in quality and quality["injury_risks"]:
+        vr_q["injury_risks"] = [
+            {
+                "joint": str(r.get("joint", "")),
+                "risk": str(r.get("risk", "")),
+                "severity": str(r.get("severity", "")),
+                "value": round(_safe_float(r.get("value", 0)), 1),
+                "threshold": round(_safe_float(r.get("threshold", 0)), 1),
+            }
+            for r in quality["injury_risks"]
+        ]
+
+    # Active guideline (name, display_name, form_cues)
+    if "active_guideline" in quality and quality["active_guideline"] is not None:
+        ag = quality["active_guideline"]
+        vr_q["active_guideline"] = {
+            "name": str(ag.get("name", "")),
+            "display_name": str(ag.get("display_name", "")),
+            "form_cues": [str(c) for c in ag.get("form_cues", [])],
+        }
+
+    # Ratings (always present)
+    vr_q["concussion_rating"] = round(_safe_float(quality.get("concussion_rating", 0)), 1)
+    vr_q["fatigue_rating"] = round(_safe_float(quality.get("fatigue_rating", 0)), 1)
+
+    # NOTE: fatigue_timeline, joint_quality, head kinematics are OMITTED for VR.
+    # InfoPanel.cs doesn't read them and they inflate response size significantly.
+
+    return vr_q
+
+
+def _safe_cluster_summary_for_vr(cluster_summary: dict[str, Any] | None) -> dict[str, Any]:
+    """Sanitize cluster_summary values for VR JSON serialization."""
+    if not cluster_summary:
+        return {}
+    out: dict[str, Any] = {}
+    for cid, cinfo in cluster_summary.items():
+        out[str(cid)] = {
+            "count": int(cinfo.get("count", 0)),
+            "mean_score": round(_safe_float(cinfo.get("mean_score", 0)), 3),
+            "anomaly_count": int(cinfo.get("anomaly_count", 0)),
+        }
+        if "activity_label" in cinfo and cinfo["activity_label"]:
+            out[str(cid)]["activity_label"] = str(cinfo["activity_label"])
+        if "composite_fatigue" in cinfo:
+            out[str(cid)]["composite_fatigue"] = round(_safe_float(cinfo["composite_fatigue"]), 3)
+    return out
+
+
 def _build_vr_response(
     subjects_data: dict[str, dict[str, Any]],
     active_ids: list[int],
@@ -1143,46 +1268,52 @@ def _build_vr_response(
     vr_selected_subject: int | None,
     timing: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build VR-optimized response: minimal data for all, detailed for selected."""
+    """Build VR-optimized response: minimal data for all, detailed for selected.
+
+    All values are explicitly converted to Python native types to prevent
+    numpy/NaN issues that break JSON serialization or C# deserialization.
+    """
     vr_subjects: dict[str, dict[str, Any]] = {}
     for sid_str, data in subjects_data.items():
         sid = int(sid_str)
         if sid == vr_selected_subject:
-            # Selected: send analysis data but strip heavy visualization fields
+            # Selected: send analysis data with stripped quality (VR-safe)
             vr_sub: dict[str, Any] = {
-                "label": data["label"],
+                "label": str(data.get("label", sid_str)),
                 "bbox": data["bbox"],
-                "phase": data["phase"],
+                "phase": str(data.get("phase", "calibrating")),
                 "selected": True,
-                "n_segments": data["n_segments"],
-                "n_clusters": data["n_clusters"],
-                "cluster_id": data["cluster_id"],
-                "consistency_score": data["consistency_score"],
-                "is_anomaly": data["is_anomaly"],
-                "cluster_summary": data["cluster_summary"],
-                "identity_status": data.get("identity_status", "unknown"),
-                "identity_confidence": data.get("identity_confidence", 0),
-                "velocity": data.get("velocity", 0),
-                "rolling_velocity": data.get("rolling_velocity", 0),
-                "fatigue_index": data.get("fatigue_index", 0),
-                "peak_velocity": data.get("peak_velocity", 0),
+                "n_segments": int(data.get("n_segments", 0)),
+                "n_clusters": int(data.get("n_clusters", 0)),
+                "cluster_id": int(data["cluster_id"]) if data.get("cluster_id") is not None else -1,
+                "consistency_score": round(_safe_float(data.get("consistency_score", 0)), 3),
+                "is_anomaly": bool(data.get("is_anomaly", False)),
+                "cluster_summary": _safe_cluster_summary_for_vr(data.get("cluster_summary")),
+                "identity_status": str(data.get("identity_status", "unknown")),
+                "identity_confidence": round(_safe_float(data.get("identity_confidence", 0)), 3),
+                "velocity": round(_safe_float(data.get("velocity", 0)), 4),
+                "rolling_velocity": round(_safe_float(data.get("rolling_velocity", 0)), 4),
+                "fatigue_index": round(_safe_float(data.get("fatigue_index", 0)), 3),
+                "peak_velocity": round(_safe_float(data.get("peak_velocity", 0)), 4),
             }
-            if "quality" in data:
-                vr_sub["quality"] = data["quality"]
+            if "quality" in data and data["quality"]:
+                vr_sub["quality"] = _strip_quality_for_vr(data["quality"])
+            if data.get("alert_text"):
+                vr_sub["alert_text"] = str(data["alert_text"])
             vr_subjects[sid_str] = vr_sub
         else:
             # Unselected: bbox + label only (~80 bytes)
             vr_subjects[sid_str] = {
-                "label": data["label"],
+                "label": str(data.get("label", sid_str)),
                 "bbox": data["bbox"],
-                "phase": data.get("phase", "calibrating"),
+                "phase": str(data.get("phase", "calibrating")),
                 "selected": False,
             }
     return {
         "frame_index": frame_idx,
-        "video_time": video_time,
+        "video_time": float(video_time),
         "subjects": vr_subjects,
-        "active_track_ids": active_ids,
+        "active_track_ids": [int(x) for x in active_ids],
         "timing": timing,
     }
 
@@ -1790,10 +1921,28 @@ async def _handle_webcam_mode(
             }
 
             if client_type == "vr":
-                await websocket.send_json(_build_vr_response(
+                vr_resp = _build_vr_response(
                     subjects_data, active_ids, frame_idx, video_time,
                     vr_selected_subject, timing_dict,
-                ))
+                )
+                try:
+                    vr_json = json.dumps(vr_resp, separators=(",", ":"))
+                except (TypeError, ValueError) as e:
+                    # Serialization failed (numpy type? NaN?) — send minimal fallback
+                    print(f"[vr] JSON serialize FAILED: {e}", flush=True)
+                    vr_resp = _build_vr_response(
+                        subjects_data, active_ids, frame_idx, video_time,
+                        None, timing_dict,  # pretend no selection to skip quality
+                    )
+                    vr_json = json.dumps(vr_resp, separators=(",", ":"))
+                # Log size periodically for debugging (every 300 frames = ~10s)
+                if frame_idx % 300 == 0 or (vr_selected_subject is not None and frame_idx % 60 == 0):
+                    print(f"[vr] response size: {len(vr_json)} bytes, selected={vr_selected_subject}", flush=True)
+                # Store for debug endpoint
+                if stream_id and stream_id in _active_streams:
+                    _active_streams[stream_id]["_last_vr_json"] = vr_json
+                    _active_streams[stream_id]["_last_vr_json_size"] = len(vr_json)
+                await websocket.send_text(vr_json)
             else:
                 await websocket.send_json({
                     "frame_index": frame_idx,

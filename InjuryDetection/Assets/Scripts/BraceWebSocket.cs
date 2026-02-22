@@ -38,6 +38,14 @@ public class BraceWebSocket : MonoBehaviour
     private const int NO_CHANGE = -2;
     private const int DESELECT = -1;
 
+    // Reuse settings to avoid GC pressure at 30fps on Quest 3
+    private static readonly JsonSerializerSettings _jsonSettings = new JsonSerializerSettings
+    {
+        FloatParseHandling = FloatParseHandling.Double,       // Accept NaN/Infinity
+        MissingMemberHandling = MissingMemberHandling.Ignore, // Ignore unknown fields
+        NullValueHandling = NullValueHandling.Ignore,         // Skip null → value type
+    };
+
     /// <summary>Latest parsed response from the server.</summary>
     public BraceResponse LatestResponse { get; private set; }
 
@@ -224,19 +232,32 @@ public class BraceWebSocket : MonoBehaviour
     // Receiving responses
     // ------------------------------------------------------------------
 
+    /// <summary>Last JSON parse error message (for DebugHUD).</summary>
+    public string LastParseError { get; private set; } = "";
+
+    /// <summary>Size in bytes of the last received message (for DebugHUD).</summary>
+    public int LastMessageSize { get; private set; }
+
+    /// <summary>Count of JSON parse failures (for DebugHUD).</summary>
+    public int ParseErrors { get; private set; }
+
     private void OnMessage(byte[] data)
     {
         _inFlight = Mathf.Max(0, _inFlight - 1);
+        LastMessageSize = data.Length;
 
         string json = Encoding.UTF8.GetString(data);
         try
         {
-            LatestResponse = JsonConvert.DeserializeObject<BraceResponse>(json);
+            LatestResponse = JsonConvert.DeserializeObject<BraceResponse>(json, _jsonSettings);
             _framesReceived++;
+            LastParseError = "";  // Clear on success
         }
         catch (Exception e)
         {
-            Debug.LogWarning($"[BRACE] JSON parse error: {e.Message}\nFirst 200 chars: {json.Substring(0, Mathf.Min(200, json.Length))}");
+            ParseErrors++;
+            LastParseError = e.Message;
+            Debug.LogWarning($"[BRACE] JSON parse error #{ParseErrors}: {e.Message}\nJSON size: {data.Length} bytes\nFirst 500 chars: {json.Substring(0, Mathf.Min(500, json.Length))}");
         }
     }
 }

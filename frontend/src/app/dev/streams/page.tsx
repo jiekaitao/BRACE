@@ -339,6 +339,8 @@ function StreamDetail({
 
   const [streamData, setStreamData] = useState<StreamData | null>(null);
   const [showRawJson, setShowRawJson] = useState(false);
+  const [vrDebugJson, setVrDebugJson] = useState<string | null>(null);
+  const [showVrJson, setShowVrJson] = useState(false);
 
   const isVR = stream.client_type === "vr";
 
@@ -378,6 +380,32 @@ function StreamDetail({
       if (dataIntervalRef.current) clearInterval(dataIntervalRef.current);
     };
   }, [stream.stream_id]);
+
+  // Poll VR debug endpoint for VR streams
+  useEffect(() => {
+    if (!isVR || !showVrJson) return;
+    const base = getApiBase();
+    const load = async () => {
+      try {
+        const res = await fetch(
+          `${base}/api/streams/${stream.stream_id}/vr-debug`,
+        );
+        if (!res.ok) return;
+        const text = await res.text();
+        // Pretty-print the JSON for display
+        try {
+          setVrDebugJson(JSON.stringify(JSON.parse(text), null, 2));
+        } catch {
+          setVrDebugJson(text);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    load();
+    const iv = setInterval(load, 1000);
+    return () => clearInterval(iv);
+  }, [isVR, showVrJson, stream.stream_id]);
 
   const subjects = streamData?.subjects ?? {};
   const subjectIds = Object.keys(subjects);
@@ -428,6 +456,18 @@ function StreamDetail({
           >
             {showRawJson ? "Cards" : "Raw JSON"}
           </button>
+          {isVR && (
+            <button
+              onClick={() => setShowVrJson((v) => !v)}
+              className={`text-xs font-bold transition-colors px-2 py-1 ${
+                showVrJson
+                  ? "text-[#7B2FF7]"
+                  : "text-[#AFAFAF] hover:text-[#7B2FF7]"
+              }`}
+            >
+              {showVrJson ? "Hide VR JSON" : "VR Response"}
+            </button>
+          )}
           <button
             onClick={onClose}
             className="text-xs font-bold text-[#AFAFAF] hover:text-[#3C3C3C] transition-colors px-2 py-1"
@@ -521,6 +561,28 @@ function StreamDetail({
           )}
         </div>
       </div>
+
+      {/* VR debug JSON panel (exact response the Quest 3 receives) */}
+      {isVR && showVrJson && (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-[#7B2FF7]">
+              Exact VR WebSocket Response
+            </span>
+            {vrDebugJson && (
+              <span className="text-[10px] text-[#AFAFAF] font-mono">
+                {vrDebugJson.length.toLocaleString()} chars
+              </span>
+            )}
+          </div>
+          <pre
+            className="bg-[#1A0A2E] text-[#D8A8FF] text-[10px] leading-[1.5] font-mono p-3 rounded-xl overflow-auto"
+            style={{ maxHeight: 400 }}
+          >
+            {vrDebugJson ?? "Loading VR response..."}
+          </pre>
+        </div>
+      )}
     </Card>
   );
 }

@@ -117,7 +117,19 @@ public class DebugHUD : MonoBehaviour
                 }
             }
 
-            sb.AppendLine($"Recv: {braceWs.FramesReceived}  InFlight: {braceWs.InFlight}");
+            sb.AppendLine($"Recv: {braceWs.FramesReceived}  InFlight: {braceWs.InFlight}  MsgSize: {braceWs.LastMessageSize}B");
+
+            // JSON parse diagnostics
+            if (braceWs.ParseErrors > 0)
+            {
+                sb.AppendLine($"<color=#ff3333>Parse errors: {braceWs.ParseErrors}</color>");
+                if (!string.IsNullOrEmpty(braceWs.LastParseError))
+                {
+                    string pe = braceWs.LastParseError;
+                    if (pe.Length > 150) pe = pe.Substring(0, 150) + "...";
+                    sb.AppendLine($"<color=#ff3333>{pe}</color>");
+                }
+            }
         }
         else
         {
