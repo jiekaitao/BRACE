@@ -16,7 +16,7 @@ public class DebugHUD : MonoBehaviour
     [Header("Display")]
     [SerializeField] private bool showHUD = true;
     [SerializeField] private float hudDistance = 2f;
-    [SerializeField] private int fontSize = 24;
+    [SerializeField] private int fontSize = 28;
 
     private Canvas _canvas;
     private Text _text;
@@ -67,6 +67,12 @@ public class DebugHUD : MonoBehaviour
             string wsStatus = braceWs.IsConnected ? "<color=green>CONNECTED</color>" : "<color=red>DISCONNECTED</color>";
             sb.AppendLine($"WS: {wsStatus}");
             sb.AppendLine($"URL: {TruncateUrl(braceWs.ServerUrl)}");
+            if (!braceWs.IsConnected && !string.IsNullOrEmpty(braceWs.LastError))
+            {
+                string err = braceWs.LastError;
+                if (err.Length > 80) err = err.Substring(0, 80) + "...";
+                sb.AppendLine($"<color=red>Err: {err}</color>");
+            }
             sb.AppendLine($"Recv: {braceWs.FramesReceived}  InFlight: {braceWs.InFlight}");
         }
         else
@@ -116,8 +122,8 @@ public class DebugHUD : MonoBehaviour
         scaler.dynamicPixelsPerUnit = 10f;
 
         var rt = _canvas.GetComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(450, 300);
-        rt.localScale = Vector3.one * 0.0008f;
+        rt.sizeDelta = new Vector2(500, 350);
+        rt.localScale = Vector3.one * 0.001f;
 
         // Semi-transparent background
         var bgObj = new GameObject("BG");
@@ -144,8 +150,8 @@ public class DebugHUD : MonoBehaviour
         var textRect = _text.GetComponent<RectTransform>();
         textRect.anchorMin = Vector2.zero;
         textRect.anchorMax = Vector2.one;
-        textRect.offsetMin = new Vector2(10, 5);
-        textRect.offsetMax = new Vector2(-10, -5);
+        textRect.offsetMin = new Vector2(15, 10);
+        textRect.offsetMax = new Vector2(-15, -10);
     }
 
     private static string TruncateUrl(string url)

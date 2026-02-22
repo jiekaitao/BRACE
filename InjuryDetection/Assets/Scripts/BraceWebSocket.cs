@@ -12,7 +12,7 @@ using UnityEngine;
 public class BraceWebSocket : MonoBehaviour
 {
     [Header("Connection")]
-    [SerializeField] private string serverUrl = "ws://192.168.1.100:8001/ws/analyze?mode=webcam&client=vr";
+    [SerializeField] private string serverUrl = "wss://ws.braceml.com/ws/analyze?mode=webcam&client=vr";
 
     [Header("Frame Throttle")]
     [SerializeField] private int maxFps = 30;
@@ -43,6 +43,9 @@ public class BraceWebSocket : MonoBehaviour
 
     /// <summary>The URL we are connecting to (for debug HUD).</summary>
     public string ServerUrl => serverUrl;
+
+    /// <summary>Last error message (for debug HUD).</summary>
+    public string LastError { get; private set; } = "";
 
     private float SendInterval => 1f / maxFps;
 
@@ -107,6 +110,7 @@ public class BraceWebSocket : MonoBehaviour
 
         _ws.OnError += (err) =>
         {
+            LastError = err;
             Debug.LogError($"[BRACE] WebSocket ERROR: {err}");
             ScheduleReconnect();
         };
@@ -119,6 +123,7 @@ public class BraceWebSocket : MonoBehaviour
         }
         catch (Exception e)
         {
+            LastError = e.Message;
             Debug.LogError($"[BRACE] Connect exception: {e.Message}");
             ScheduleReconnect();
         }
