@@ -57,6 +57,7 @@ class UserResponse(BaseModel):
     username: str
     injury_profile: dict | None = None
     risk_modifiers: dict | None = None
+    research_guidelines: dict | None = None
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -181,6 +182,7 @@ async def me(user: dict = Depends(get_current_user)):
         username=user["username"],
         injury_profile=user.get("injury_profile"),
         risk_modifiers=user.get("risk_modifiers"),
+        research_guidelines=user.get("research_guidelines"),
     )
 
 
@@ -198,6 +200,7 @@ async def get_profile(user: dict = Depends(get_current_user)):
     return {
         "injury_profile": user.get("injury_profile"),
         "risk_modifiers": user.get("risk_modifiers"),
+        "research_guidelines": user.get("research_guidelines"),
     }
 
 

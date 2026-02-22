@@ -25,6 +25,7 @@ export interface AuthUser {
   username: string;
   injury_profile?: Record<string, unknown> | null;
   risk_modifiers?: Record<string, unknown> | null;
+  research_guidelines?: Record<string, unknown> | null;
 }
 
 export interface AuthResponse {

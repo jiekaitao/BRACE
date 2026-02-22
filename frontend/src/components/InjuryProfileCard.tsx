@@ -21,7 +21,7 @@ const SEVERITY_COLORS: Record<string, string> = {
   severe: "#EA2B2B",
 };
 
-function InjuryBadge({ injury }: { injury: InjuryEntry }) {
+export function InjuryBadge({ injury }: { injury: InjuryEntry }) {
   const label = INJURY_LABELS[injury.type] ?? injury.type;
   const color = SEVERITY_COLORS[injury.severity] ?? "#AFAFAF";
 

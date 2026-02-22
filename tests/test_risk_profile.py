@@ -148,7 +148,7 @@ class TestEvaluateInjuryRisksWithModifiers:
         """FPPA=14 with default thresholds -> no risk."""
         bio = {"fppa_left": 14.0, "fppa_right": 0.0}
         risks = evaluate_injury_risks(bio)
-        fppa_risks = [r for r in risks if r["risk"] == "acl_valgus"]
+        fppa_risks = [r for r in risks if r["risk"] == "knee_valgus"]
         assert len(fppa_risks) == 0
 
     def test_fppa_below_default_with_modifier_triggers_risk(self):
@@ -156,7 +156,7 @@ class TestEvaluateInjuryRisksWithModifiers:
         bio = {"fppa_left": 14.0, "fppa_right": 0.0}
         m = RiskModifiers(fppa_scale=0.65)
         risks = evaluate_injury_risks(bio, modifiers=m)
-        fppa_risks = [r for r in risks if r["risk"] == "acl_valgus"]
+        fppa_risks = [r for r in risks if r["risk"] == "knee_valgus"]
         assert len(fppa_risks) == 1
         assert fppa_risks[0]["severity"] == "medium"
         assert fppa_risks[0]["joint"] == "left_knee"
@@ -218,7 +218,7 @@ class TestEvaluateInjuryRisksWithModifiers:
                 self.enabled = True
                 self.metric = "fppa"
                 self.joint = "left_knee"
-                self.risk_name = "acl_valgus"
+                self.risk_name = "knee_valgus"
                 self.medium = 15.0
                 self.high = 25.0
 
@@ -230,7 +230,7 @@ class TestEvaluateInjuryRisksWithModifiers:
         # With profile, the profile's thresholds are used, not modifiers
         risks = evaluate_injury_risks(bio, profile=profile, modifiers=m)
         # 14 < 15 (profile threshold), so no risk from profile path
-        fppa_risks = [r for r in risks if r["risk"] == "acl_valgus"]
+        fppa_risks = [r for r in risks if r["risk"] == "knee_valgus"]
         assert len(fppa_risks) == 0
 
     def test_high_severity_with_modifier(self):
@@ -238,7 +238,7 @@ class TestEvaluateInjuryRisksWithModifiers:
         bio = {"fppa_left": 20.0, "fppa_right": 0.0}
         m = RiskModifiers(fppa_scale=0.65)
         risks = evaluate_injury_risks(bio, modifiers=m)
-        fppa_risks = [r for r in risks if r["risk"] == "acl_valgus"]
+        fppa_risks = [r for r in risks if r["risk"] == "knee_valgus"]
         assert len(fppa_risks) == 1
         assert fppa_risks[0]["severity"] == "high"
         assert fppa_risks[0]["threshold"] == pytest.approx(25.0 * 0.65)

@@ -21,7 +21,7 @@ class RiskStatus(enum.IntEnum):
 @dataclass
 class InjuryEvent:
     """A single detected injury risk event."""
-    risk_name: str        # e.g. "acl_valgus", "hip_drop"
+    risk_name: str        # e.g. "knee_valgus", "hip_drop"
     severity: str         # "medium" or "high"
     joint: str            # "left_knee", "pelvis", etc.
     timestamp: float      # video time in seconds

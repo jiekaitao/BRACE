@@ -8,13 +8,16 @@ import { updateProfile } from "@/lib/auth";
 import LoginForm from "@/components/LoginForm";
 import ChatPanel from "@/components/ChatPanel";
 import InjuryProfileCard from "@/components/InjuryProfileCard";
+import InjuryExtractionSidebar from "@/components/InjuryExtractionSidebar";
 import DuoButton from "@/components/ui/DuoButton";
 import DemoVideoModal from "@/components/DemoVideoModal";
+import ResearchStep from "@/components/ResearchStep";
 
 const PERSONAL_STEPS = [
   { title: "Welcome to BRACE", subtitle: "Sign in or create an account to get started" },
   { title: "Injury History", subtitle: "Tell us about any past injuries" },
   { title: "Your Profile", subtitle: "Review your injury profile" },
+  { title: "Your Guidelines", subtitle: "Personalized monitoring based on your injuries" },
   { title: "Get Started", subtitle: "Choose how to analyze your movement" },
 ];
 
@@ -45,6 +48,7 @@ function OnboardingContent() {
     loading: chatLoading,
     error: chatError,
     extractedProfile,
+    partialInjuries,
     profileComplete,
     sendMessage,
     confirmProfile,
@@ -57,7 +61,7 @@ function OnboardingContent() {
   // Map visual step index to logical step type
   const stepType = isTeam
     ? (["welcome", "mode"] as const)[step] ?? "mode"
-    : (["welcome", "chat", "profile", "mode"] as const)[step] ?? "mode";
+    : (["welcome", "chat", "profile", "research", "mode"] as const)[step] ?? "mode";
 
   const next = useCallback(
     () => setStep((s) => Math.min(s + 1, STEPS.length - 1)),
@@ -174,7 +178,7 @@ function OnboardingContent() {
       </div>
 
       {/* Step content */}
-      <div className="w-full max-w-lg">
+      <div className={`w-full ${stepType === "chat" ? "max-w-3xl" : "max-w-lg"}`}>
         {stepType === "welcome" && (
           <div className="fade-up">
             {user ? (
@@ -197,17 +201,30 @@ function OnboardingContent() {
 
         {stepType === "chat" && (
           <div className="fade-up">
-            <div
-              className="bg-white rounded-[16px] border-2 border-[#E5E5E5] overflow-hidden"
-              style={{ height: 400 }}
-            >
-              <ChatPanel
-                messages={messages}
-                loading={chatLoading}
-                error={chatError}
-                onSend={sendMessage}
-                placeholder="Tell me about any injuries..."
-              />
+            <div className="flex gap-4">
+              {/* Chat panel */}
+              <div
+                className="flex-[2] bg-white rounded-[16px] border-2 border-[#E5E5E5] overflow-hidden"
+                style={{ height: 450 }}
+              >
+                <ChatPanel
+                  messages={messages}
+                  loading={chatLoading}
+                  error={chatError}
+                  onSend={sendMessage}
+                  placeholder="Tell me about any injuries..."
+                />
+              </div>
+              {/* Injury extraction sidebar */}
+              <div
+                className="flex-1 bg-white rounded-[16px] border-2 border-[#E5E5E5] p-4 hidden sm:flex"
+                style={{ height: 450 }}
+              >
+                <InjuryExtractionSidebar
+                  partialInjuries={partialInjuries}
+                  extractedProfile={extractedProfile}
+                />
+              </div>
             </div>
             <div className="flex justify-between mt-4">
               <DuoButton variant="secondary" onClick={back}>
@@ -256,6 +273,32 @@ function OnboardingContent() {
                   Skip
                 </DuoButton>
               )}
+            </div>
+          </div>
+        )}
+
+        {stepType === "research" && (
+          <div className="fade-up">
+            {extractedProfile && extractedProfile.injuries.length > 0 ? (
+              <ResearchStep
+                injuryProfile={extractedProfile}
+                userId={user?.user_id}
+                onContinue={next}
+              />
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-sm text-[#777777] mb-4">
+                  No injuries to research. Continue to get started!
+                </p>
+                <DuoButton variant="primary" onClick={next}>
+                  Continue
+                </DuoButton>
+              </div>
+            )}
+            <div className="flex justify-start mt-4">
+              <DuoButton variant="secondary" onClick={back}>
+                Back
+              </DuoButton>
             </div>
           </div>
         )}

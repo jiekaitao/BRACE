@@ -41,6 +41,10 @@ export const FEATURE_NAMES: Record<number, string> = {
 export const RISK_JOINT_TO_MP: Record<string, number[]> = {
   left_knee: [23, 25, 27],          // L hip, knee, ankle
   right_knee: [24, 26, 28],         // R hip, knee, ankle
+  left_elbow: [11, 13, 15],         // L shoulder, elbow, wrist
+  right_elbow: [12, 14, 16],        // R shoulder, elbow, wrist
+  left_hip: [11, 23, 25],           // L shoulder, hip, knee
+  right_hip: [12, 24, 26],          // R shoulder, hip, knee
   pelvis: [23, 24],                 // both hips
   trunk: [11, 12, 23, 24],          // shoulders + hips
   bilateral: [23, 24, 25, 26, 27, 28],
@@ -53,6 +57,10 @@ export const RISK_JOINT_TO_MP: Record<string, number[]> = {
 export const RISK_JOINT_TO_FEAT: Record<string, number[]> = {
   left_knee: [6, 8, 10],
   right_knee: [7, 9, 11],
+  left_elbow: [0, 2, 4],
+  right_elbow: [1, 3, 5],
+  left_hip: [0, 6, 8],
+  right_hip: [1, 7, 9],
   pelvis: [6, 7],
   trunk: [0, 1, 6, 7],
   bilateral: [6, 7, 8, 9, 10, 11],
