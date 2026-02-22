@@ -74,3 +74,6 @@ backend/data/coach_reports/sent/
 
 # Documentation swap files
 documentation/.*.swp
+InjuryDetection/Assets/Resources/PerformanceTestRunInfo.json
+InjuryDetection/Assets/StreamingAssets/RuntimeActionBindings.json
+InjuryDetection/Assets/StreamingAssets/RuntimeActionBindings.json.meta
