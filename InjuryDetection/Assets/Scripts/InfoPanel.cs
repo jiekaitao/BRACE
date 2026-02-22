@@ -23,16 +23,16 @@ public class InfoPanel : MonoBehaviour
     [SerializeField] private float rightOffset = 0f;
 
     [Tooltip("TMP font size for title")]
-    [SerializeField] private float titleFontSize = 140f;
+    [SerializeField] private float titleFontSize = 300f;
 
     [Tooltip("TMP font size for body text")]
-    [SerializeField] private float bodyFontSize = 110f;
+    [SerializeField] private float bodyFontSize = 240f;
 
     [Tooltip("World scale of the canvas")]
-    [SerializeField] private float canvasWorldScale = 0.01f;
+    [SerializeField] private float canvasWorldScale = 0.04f;
 
     [Tooltip("Panel size in canvas units")]
-    [SerializeField] private Vector2 panelSize = new Vector2(1600, 1400);
+    [SerializeField] private Vector2 panelSize = new Vector2(3000, 4500);
 
     [Tooltip("Panel background alpha (0..1)")]
     [Range(0f, 1f)]
@@ -61,6 +61,12 @@ public class InfoPanel : MonoBehaviour
             _cameraAnchor = rig.centerEyeAnchor;
         else
             _cameraAnchor = Camera.main != null ? Camera.main.transform : transform;
+
+        // Force panel sizing values at runtime (overrides any stale serialized values in scene)
+        titleFontSize = 60f;
+        bodyFontSize = 48f;
+        canvasWorldScale = 0.0016f;
+        panelSize = new Vector2(1000, 1600);
 
         CreatePanel();
         Hide();
