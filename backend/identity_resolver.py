@@ -7,8 +7,10 @@ embeddings and body proportions.
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass, field
 
+import cv2
 import numpy as np
 
 from multi_person_tracker import TrackedPerson
@@ -420,10 +422,29 @@ class IdentityResolver:
                     # Only store 512D OSNet embeddings — skip CLIP 768D from post-cut mode
                     if self._vectorai_store is not None and _emb_is_512d:
                         try:
+                            # Crop person from frame for dashboard thumbnail
+                            crop_b64 = None
+                            try:
+                                bp = pr.bbox_pixel
+                                x1c = max(0, int(bp[0]))
+                                y1c = max(0, int(bp[1]))
+                                x2c = min(w, int(bp[2]))
+                                y2c = min(h, int(bp[3]))
+                                if x2c > x1c and y2c > y1c:
+                                    crop = rgb_frame[y1c:y2c, x1c:x2c]
+                                    crop_resized = cv2.resize(crop, (64, 128))
+                                    _, buf = cv2.imencode(
+                                        ".jpg", cv2.cvtColor(crop_resized, cv2.COLOR_RGB2BGR),
+                                        [cv2.IMWRITE_JPEG_QUALITY, 70],
+                                    )
+                                    crop_b64 = base64.b64encode(buf.tobytes()).decode()
+                            except Exception:
+                                pass
                             self._vectorai_store.store_person_embedding(
                                 emb,
                                 person_id=f"S{subject_id}",
                                 session_id=self._session_id,
+                                person_crop_b64=crop_b64,
                             )
                         except Exception as exc:
                             print(f"[vectorai-reid] store failed: {exc}", flush=True)

@@ -6,8 +6,14 @@ interface Props {
   message: ChatMessageType;
 }
 
+/** Strip ```json ... ``` blocks from assistant messages so users don't see raw JSON. */
+function stripJsonBlocks(text: string): string {
+  return text.replace(/```json\s*[\s\S]*?```/g, "").trim();
+}
+
 export default function ChatMessageBubble({ message }: Props) {
   const isUser = message.role === "user";
+  const displayContent = isUser ? message.content : stripJsonBlocks(message.content);
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -20,10 +26,10 @@ export default function ChatMessageBubble({ message }: Props) {
           }
         `}
       >
-        {message.content.split("\n").map((line, i) => (
+        {displayContent.split("\n").map((line, i) => (
           <span key={i}>
             {line}
-            {i < message.content.split("\n").length - 1 && <br />}
+            {i < displayContent.split("\n").length - 1 && <br />}
           </span>
         ))}
       </div>

@@ -135,9 +135,9 @@ export default function HomePage() {
           className="flex flex-col sm:flex-row gap-3 w-full fade-up"
           style={{ animationDelay: "0.65s" }}
         >
-          <Link href="/analyze?mode=upload" className="flex-1 no-underline">
+          <Link href="/vectorai" className="flex-1 no-underline">
             <DuoButton variant="primary" fullWidth>
-              Upload Video
+              VectorAI Store
             </DuoButton>
           </Link>
           <Link href="/analyze?mode=webcam" className="flex-1 no-underline">

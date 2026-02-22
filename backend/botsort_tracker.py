@@ -147,12 +147,18 @@ class BoTSortTracker:
 
         if not results or len(results) == 0:
             # Still update tracker with empty dets so it ages out old tracks
-            self._tracker.update(np.empty((0, 6)), rgb_frame)
+            try:
+                self._tracker.update(np.empty((0, 6)), rgb_frame)
+            except Exception:
+                self._reset_cmc()
             return []
 
         result = results[0]
         if result.boxes is None or len(result.boxes) == 0:
-            self._tracker.update(np.empty((0, 6)), rgb_frame)
+            try:
+                self._tracker.update(np.empty((0, 6)), rgb_frame)
+            except Exception:
+                self._reset_cmc()
             return []
 
         boxes = result.boxes

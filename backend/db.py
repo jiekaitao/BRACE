@@ -93,6 +93,16 @@ async def ensure_indexes() -> None:
         ("activity", 1),
     ])
 
+    # vector_entries: MongoDB mirror of VectorAI vectors for dashboard browsing
+    await db["vector_entries"].create_index("collection")
+    await db["vector_entries"].create_index("vector_uuid", unique=True)
+    await db["vector_entries"].create_index([
+        ("collection", 1),
+        ("timestamp", -1),
+    ])
+    await db["vector_entries"].create_index("person_id")
+    await db["vector_entries"].create_index("session_id")
+
 
 # ---------------------------------------------------------------------------
 # Document helpers
