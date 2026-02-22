@@ -442,7 +442,12 @@ def serve_demo_video(filename: str):
     """Serve a demo video file for streaming playback."""
     path = DEMO_VIDEOS_DIR / filename
     if not path.exists() or path.suffix != ".mp4":
-        return {"error": "Not found"}
+        return Response(
+            content='{"error":"Not found"}',
+            status_code=404,
+            media_type="application/json",
+            headers={"Cache-Control": "no-store"},
+        )
     return FileResponse(path, media_type="video/mp4")
 
 

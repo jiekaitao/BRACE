@@ -116,7 +116,7 @@ function AnalyzeContent() {
   // Set demo URL on client mount (avoids SSR hydration mismatch)
   useEffect(() => {
     if (paramMode === "demo" && paramVideo) {
-      setDemoVideoUrl(`${getApiBase()}/api/demo-videos/${encodeURIComponent(paramVideo)}`);
+      setDemoVideoUrl(`${getApiBase()}/api/demo-videos/${encodeURIComponent(paramVideo)}?v=${Date.now()}`);
     }
   }, [paramMode, paramVideo]);
 
@@ -209,7 +209,7 @@ function AnalyzeContent() {
       setShowDemoModal(false);
 
       const apiBase = getApiBase();
-      const url = `${apiBase}/api/demo-videos/${encodeURIComponent(filename)}`;
+      const url = `${apiBase}/api/demo-videos/${encodeURIComponent(filename)}?v=${Date.now()}`;
       setDemoVideoUrl(url);
       setMode("webcam");
       setActive(true);

@@ -2,7 +2,7 @@
 
 import { ButtonHTMLAttributes } from "react";
 
-type Variant = "primary" | "secondary" | "danger" | "blue";
+type Variant = "primary" | "secondary" | "danger" | "blue" | "green";
 
 const variantStyles: Record<Variant, string> = {
   primary:
@@ -13,6 +13,8 @@ const variantStyles: Record<Variant, string> = {
     "bg-[#FF4B4B] text-white shadow-[0_4px_0_#CC3636] hover:brightness-105 active:shadow-none active:translate-y-[4px]",
   blue:
     "bg-[#1CB0F6] text-white shadow-[0_4px_0_#1899D6] hover:brightness-105 active:shadow-none active:translate-y-[4px]",
+  green:
+    "bg-[#2D7A3A] text-white shadow-[0_4px_0_#1E5727] hover:brightness-105 active:shadow-none active:translate-y-[4px]",
 };
 
 interface DuoButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
