@@ -157,7 +157,7 @@ public class DebugHUD : MonoBehaviour
         // Bounding boxes
         if (boxRenderer != null)
         {
-            sb.AppendLine($"Boxes: {boxRenderer.BoxCount}");
+            sb.AppendLine($"Boxes: {boxRenderer.BoxCount}  FOV: {boxRenderer.FovSource}");
         }
 
         // Latest response info

@@ -3,7 +3,9 @@ using UnityEngine;
 
 /// <summary>
 /// Renders bounding boxes in world space for each tracked subject.
-/// Reads BraceResponse from BraceWebSocket each frame, creates/updates/removes boxes.
+/// Uses passthrough camera intrinsics (queried via OVRPlugin) to correctly
+/// map normalized [0,1] image coordinates to 3D world positions.
+/// Falls back to configurable FOV values if intrinsics are unavailable.
 /// Auto-finds BraceWebSocket if not assigned in Inspector.
 /// </summary>
 public class BoundingBoxRenderer : MonoBehaviour
@@ -18,6 +20,12 @@ public class BoundingBoxRenderer : MonoBehaviour
     [SerializeField] private Color selectedColor = new Color(0.345f, 0.8f, 0.008f, 1f); // #58CC02
     [SerializeField] private Color calibratingColor = new Color(1f, 0.84f, 0f, 0.7f);   // gold
 
+    [Header("Passthrough Camera FOV (fallback if intrinsics unavailable)")]
+    [Tooltip("Horizontal FOV of Quest 3 passthrough camera in degrees")]
+    [SerializeField] private float fallbackHFov = 97f;
+    [Tooltip("Vertical FOV of Quest 3 passthrough camera in degrees")]
+    [SerializeField] private float fallbackVFov = 73f;
+
     [Header("Smoothing")]
     [Range(0.05f, 1f)]
     [SerializeField] private float smoothAlpha = 0.3f;
@@ -27,8 +35,18 @@ public class BoundingBoxRenderer : MonoBehaviour
     private readonly List<string> _removeList = new();
     private Material _lineMaterial;
 
+    // Passthrough camera FOV tangent values (queried or computed from fallback)
+    private float _leftTan;
+    private float _rightTan;
+    private float _upTan;
+    private float _downTan;
+    private bool _intrinsicsQueried;
+
     /// <summary>Current number of bounding boxes displayed (for debug HUD).</summary>
     public int BoxCount => _boxes.Count;
+
+    /// <summary>Source of FOV data (for debug HUD).</summary>
+    public string FovSource { get; private set; } = "pending";
 
     void Start()
     {
@@ -65,12 +83,19 @@ public class BoundingBoxRenderer : MonoBehaviour
         {
             Debug.LogError("[BRACE] No usable shader found for LineRenderer!");
         }
+
+        // Initialize FOV tangent values
+        SetFallbackFov();
     }
 
     void Update()
     {
         if (braceWs == null || _cam == null) return;
         if (braceWs.LatestResponse == null) return;
+
+        // Try to query camera intrinsics once (may not be available on first frame)
+        if (!_intrinsicsQueried)
+            TryQueryCameraIntrinsics();
 
         var response = braceWs.LatestResponse;
         if (response.subjects == null) return;
@@ -103,6 +128,106 @@ public class BoundingBoxRenderer : MonoBehaviour
     }
 
     // ------------------------------------------------------------------
+    // Camera intrinsics
+    // ------------------------------------------------------------------
+
+    private void SetFallbackFov()
+    {
+        // Convert symmetric FOV degrees to tangent values
+        float halfH = fallbackHFov * 0.5f * Mathf.Deg2Rad;
+        float halfV = fallbackVFov * 0.5f * Mathf.Deg2Rad;
+        _leftTan = Mathf.Tan(halfH);
+        _rightTan = Mathf.Tan(halfH);
+        _upTan = Mathf.Tan(halfV);
+        _downTan = Mathf.Tan(halfV);
+        FovSource = $"fallback ({fallbackHFov}x{fallbackVFov})";
+        Debug.Log($"[BRACE] Using fallback FOV: H={fallbackHFov}° V={fallbackVFov}° " +
+                  $"(tanH={_leftTan:F3} tanV={_upTan:F3})");
+    }
+
+    private void TryQueryCameraIntrinsics()
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        try
+        {
+            // Try OVRPlugin.GetMixedRealityCameraInfo for passthrough camera intrinsics
+            OVRPlugin.CameraIntrinsics intrinsics;
+            OVRPlugin.CameraExtrinsics extrinsics;
+
+            // Try camera IDs 0, 1, 2 (Quest 3 has multiple cameras)
+            for (int camId = 0; camId < 3; camId++)
+            {
+                bool success = OVRPlugin.GetMixedRealityCameraInfo(
+                    camId, out extrinsics, out intrinsics);
+
+                if (success && intrinsics.IsValid == OVRPlugin.Bool.True)
+                {
+                    _leftTan = intrinsics.FOVPort.LeftTan;
+                    _rightTan = intrinsics.FOVPort.RightTan;
+                    _upTan = intrinsics.FOVPort.UpTan;
+                    _downTan = intrinsics.FOVPort.DownTan;
+
+                    float hFov = Mathf.Atan(_leftTan) + Mathf.Atan(_rightTan);
+                    float vFov = Mathf.Atan(_upTan) + Mathf.Atan(_downTan);
+
+                    FovSource = $"OVRPlugin cam{camId}";
+                    _intrinsicsQueried = true;
+
+                    Debug.Log($"[BRACE] Camera intrinsics from OVRPlugin (cam {camId}): " +
+                              $"L={_leftTan:F3} R={_rightTan:F3} U={_upTan:F3} D={_downTan:F3} " +
+                              $"hFov={hFov * Mathf.Rad2Deg:F1}° vFov={vFov * Mathf.Rad2Deg:F1}° " +
+                              $"res={intrinsics.ImageSensorPixelResolution.w}x{intrinsics.ImageSensorPixelResolution.h}");
+                    return;
+                }
+            }
+
+            // Also try getting the eye frustum as a reference
+            OVRPlugin.Frustumf2 eyeFrustum;
+            if (OVRPlugin.GetNodeFrustum2(OVRPlugin.Node.EyeCenter, out eyeFrustum))
+            {
+                Debug.Log($"[BRACE] Eye frustum (reference only): " +
+                          $"L={eyeFrustum.Fov.LeftTan:F3} R={eyeFrustum.Fov.RightTan:F3} " +
+                          $"U={eyeFrustum.Fov.UpTan:F3} D={eyeFrustum.Fov.DownTan:F3}");
+            }
+
+            Debug.Log("[BRACE] OVRPlugin camera intrinsics not available, using fallback FOV");
+            _intrinsicsQueried = true;
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"[BRACE] Failed to query camera intrinsics: {e.Message}");
+            _intrinsicsQueried = true;
+        }
+#else
+        Debug.Log("[BRACE] Editor mode — using fallback FOV values");
+        _intrinsicsQueried = true;
+#endif
+    }
+
+    // ------------------------------------------------------------------
+    // Image-to-world projection using passthrough camera FOV
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Convert normalized image coordinates [0,1] to world position
+    /// using the passthrough camera's FOV tangent values.
+    /// </summary>
+    private Vector3 ImageToWorld(float imgX, float imgY)
+    {
+        // Map [0,1] image coords to tangent-space offsets
+        // Image: x=0 left, x=1 right; y=0 top, y=1 bottom
+        // Tangent space: x negative=left, positive=right; y negative=down, positive=up
+        float tanX = Mathf.Lerp(-_leftTan, _rightTan, imgX);
+        float tanY = Mathf.Lerp(_downTan, -_upTan, imgY); // y=0 top → positive up, y=1 bottom → negative down
+
+        // World position at assumedDepth along the camera's forward axis
+        return _cam.transform.position
+            + _cam.transform.forward * assumedDepth
+            + _cam.transform.right * (tanX * assumedDepth)
+            + _cam.transform.up * (tanY * assumedDepth);
+    }
+
+    // ------------------------------------------------------------------
     // Box lifecycle
     // ------------------------------------------------------------------
 
@@ -117,18 +242,15 @@ public class BoundingBoxRenderer : MonoBehaviour
             Debug.Log($"[BRACE] Created bounding box for subject {subjectId}");
         }
 
-        // BRACE: y1=top, y2=bottom (y=0 at top)
-        // Unity viewport: y=0 at bottom → flip Y
-        Vector3 viewMin = new Vector3(data.bbox.x1, 1f - data.bbox.y2, assumedDepth);
-        Vector3 viewMax = new Vector3(data.bbox.x2, 1f - data.bbox.y1, assumedDepth);
+        // Project bbox corners from image [0,1] to world space
+        // bbox: x1=left, y1=top, x2=right, y2=bottom (image-space, y=0 at top)
+        Vector3 worldTopLeft = ImageToWorld(data.bbox.x1, data.bbox.y1);
+        Vector3 worldBottomRight = ImageToWorld(data.bbox.x2, data.bbox.y2);
 
-        Vector3 worldMin = _cam.ViewportToWorldPoint(viewMin);
-        Vector3 worldMax = _cam.ViewportToWorldPoint(viewMax);
-
-        Vector3 targetCenter = (worldMin + worldMax) / 2f;
+        Vector3 targetCenter = (worldTopLeft + worldBottomRight) / 2f;
         Vector3 targetSize = new Vector3(
-            Mathf.Abs(worldMax.x - worldMin.x),
-            Mathf.Abs(worldMax.y - worldMin.y),
+            Mathf.Abs(worldBottomRight.x - worldTopLeft.x),
+            Mathf.Abs(worldTopLeft.y - worldBottomRight.y),
             0.01f
         );
 
