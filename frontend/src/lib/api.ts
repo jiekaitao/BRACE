@@ -15,9 +15,6 @@ export function getApiBase(): string {
   if (typeof window === "undefined") {
     return "http://localhost:8001";
   }
-  if (window.location.hostname === "braceml.com") {
-    return "https://ws.braceml.com";
-  }
   const isSecure = window.location.protocol === "https:";
   if (isSecure) {
     // Behind Caddy reverse proxy — /api/* routes to backend on same origin
@@ -30,9 +27,8 @@ export function getApiBase(): string {
  * Returns the WebSocket base URL for the backend.
  *
  * Routing logic:
- * - braceml.com               → wss://ws.braceml.com
- * - HTTPS (Tailscale / Caddy) → same origin (Caddy routes /ws/* to backend)
- * - HTTP  (local dev)         → ws://<hostname>:8001
+ * - HTTPS (braceml.com / Tailscale / Caddy) → same origin (Caddy routes /ws/* to backend)
+ * - HTTP  (local dev)                       → ws://<hostname>:8001
  *
  * The build-time env var NEXT_PUBLIC_WS_URL takes precedence if set.
  */
@@ -42,9 +38,6 @@ export function getWsBase(): string {
   }
   if (typeof window === "undefined") {
     return "ws://localhost:8001";
-  }
-  if (window.location.hostname === "braceml.com") {
-    return "wss://ws.braceml.com";
   }
   const isSecure = window.location.protocol === "https:";
   if (isSecure) {
