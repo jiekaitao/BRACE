@@ -81,6 +81,8 @@ export default function DevTimelinePage() {
     jerseyColor: null,
     jerseyCropBase64: null,
     jerseyGeminiResponse: null,
+    teamId: null,
+    teamColor: null,
     replayTimeline: mockTimeline,
     firstPassVelocityLen: 0,
     lastSeenTime: Date.now(),

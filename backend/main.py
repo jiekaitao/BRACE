@@ -888,7 +888,7 @@ async def ws_analyze(websocket: WebSocket):
     mode = websocket.query_params.get("mode", "webcam")
     session_id = websocket.query_params.get("session_id", "")
     cluster_threshold = float(websocket.query_params.get("cluster_threshold", "2.0"))
-    client_type = websocket.query_params.get("client", "web")  # "web" or "vr"
+    client_type = websocket.query_params.get("client", "web")  # "web", "ios", or "vr"
     fps_param = websocket.query_params.get("fps")
     target_fps = float(fps_param) if fps_param else 30.0
     user_id_param = websocket.query_params.get("user_id", "")
@@ -1229,48 +1229,62 @@ async def _handle_webcam_mode(
                     jersey_detect_pending = True
                     jersey_last_detect_time = time.monotonic()
 
-                    # Collect crops for subjects without jersey info
+                    # Collect crops for all subjects (for visual team clustering)
+                    # and separately track which ones still need Gemini jersey detection
+                    all_crops: dict[int, np.ndarray] = {}
                     crops_to_detect: dict[int, np.ndarray] = {}
                     for pr_item in results:
                         tid = pr_item.track_id
                         sid = resolver._track_to_subject.get(tid, tid) if resolver else tid
-                        gallery = resolver._galleries.get(sid) if resolver else None
-                        if gallery is not None and gallery.jersey_number is not None:
-                            continue  # already detected
                         nb = pr_item.bbox_normalized
                         x1_px = max(0, int(nb[0] * w))
                         y1_px = max(0, int(nb[1] * h))
                         x2_px = min(w, int(nb[2] * w))
                         y2_px = min(h, int(nb[3] * h))
                         if x2_px > x1_px and y2_px > y1_px:
-                            crops_to_detect[sid] = rgb[y1_px:y2_px, x1_px:x2_px].copy()
+                            crop = rgb[y1_px:y2_px, x1_px:x2_px].copy()
+                            all_crops[sid] = crop
+                            gallery = resolver._galleries.get(sid) if resolver else None
+                            if gallery is None or gallery.jersey_number is None:
+                                crops_to_detect[sid] = crop
 
-                    if crops_to_detect:
+                    if crops_to_detect or all_crops:
                         def _run_jersey_detection(
                             det=jersey_detector,
                             crops=crops_to_detect,
+                            all_c=all_crops,
                             res=resolver,
                             mgr=manager,
                             cache=jersey_debug_cache,
                         ):
+                            nonlocal team_clustering
                             try:
-                                results_j = det.detect_batch(crops)
-                                for sid, info in results_j.items():
-                                    res.set_jersey(sid, number=info.number, color=info.color)
-                                    # Cache crop + response for debug
-                                    crop = crops.get(sid)
-                                    if crop is not None:
-                                        from jersey_detector import _encode_crop_jpeg
-                                        crop_b64 = base64.b64encode(_encode_crop_jpeg(crop)).decode()
-                                        response_str = json.dumps({"number": info.number, "color": info.color})
-                                        cache[sid] = {"crop_b64": crop_b64, "gemini_response": response_str}
-                                # Merge subjects with same jersey
-                                merges = res.merge_by_jersey()
-                                for from_id, to_id in merges:
-                                    mgr.merge_subject(from_id, to_id)
-                                    print(f"[jersey] merged S{from_id} -> S{to_id}", flush=True)
+                                if crops:
+                                    results_j = det.detect_batch(crops)
+                                    for sid, info in results_j.items():
+                                        res.set_jersey(sid, number=info.number, color=info.color)
+                                        # Cache crop + response for debug
+                                        crop = crops.get(sid)
+                                        if crop is not None:
+                                            from jersey_detector import _encode_crop_jpeg
+                                            crop_b64 = base64.b64encode(_encode_crop_jpeg(crop)).decode()
+                                            response_str = json.dumps({"number": info.number, "color": info.color})
+                                            cache[sid] = {"crop_b64": crop_b64, "gemini_response": response_str}
+                                    # Merge subjects with same jersey
+                                    merges = res.merge_by_jersey()
+                                    for from_id, to_id in merges:
+                                        mgr.merge_subject(from_id, to_id)
+                                        print(f"[jersey] merged S{from_id} -> S{to_id}", flush=True)
                             except Exception as e:
                                 print(f"[jersey] detection error: {e}", flush=True)
+                            # Visual K-Means team clustering on all crops
+                            try:
+                                tc = cluster_teams_visual(all_c)
+                                if tc is not None:
+                                    team_clustering = tc
+                                    print(f"[jersey] team clustering: {len(tc.assignments)} subjects → {len(tc.team_colors)} teams, colors={tc.team_colors}", flush=True)
+                            except Exception as e:
+                                print(f"[jersey] team clustering error: {e}", flush=True)
 
                         def _jersey_done(*_):
                             nonlocal jersey_detect_pending
@@ -1471,6 +1485,13 @@ async def _handle_webcam_mode(
                             subject_out["jersey_number"] = gallery.jersey_number
                         if gallery.jersey_color is not None:
                             subject_out["jersey_color"] = gallery.jersey_color
+                # Team clustering results
+                if team_clustering is not None:
+                    tid_team = team_clustering.assignments.get(subject_id)
+                    if tid_team is not None:
+                        subject_out["team_id"] = tid_team
+                        subject_out["team_color"] = team_clustering.team_colors.get(tid_team)
+
                 # Jersey debug info (only when newly available, not every frame)
                 debug_info = jersey_debug_cache.pop(subject_id, None)
                 if debug_info is not None:

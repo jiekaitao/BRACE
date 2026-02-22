@@ -28,11 +28,11 @@ export default function JerseyDebugPanel({
   const subject = subjectsRef.current.get(selectedId);
   if (!subject) return null;
 
-  const { jerseyNumber, jerseyColor, jerseyCropBase64, jerseyGeminiResponse } = subject;
+  const { jerseyNumber, jerseyColor, jerseyCropBase64, jerseyGeminiResponse, teamId, teamColor } = subject;
   const tag = jerseyTagText(jerseyNumber, jerseyColor);
 
   // Don't render if no jersey data at all
-  if (jerseyNumber == null && !jerseyColor && !jerseyCropBase64) return null;
+  if (jerseyNumber == null && !jerseyColor && !jerseyCropBase64 && teamId == null) return null;
 
   return (
     <Card>
@@ -58,6 +58,21 @@ export default function JerseyDebugPanel({
           </div>
         </div>
       </div>
+
+      {/* Team clustering */}
+      {teamId != null && (
+        <div className="flex items-center gap-2 mb-2">
+          {teamColor && (
+            <div
+              className="w-5 h-5 rounded border border-[#E5E5E5] flex-shrink-0"
+              style={{ backgroundColor: teamColor }}
+            />
+          )}
+          <div className="text-[11px] text-[#AFAFAF]">
+            Team {teamId + 1}{teamColor ? ` \u00b7 ${teamColor}` : ""}
+          </div>
+        </div>
+      )}
 
       {/* Crop image */}
       {jerseyCropBase64 && (

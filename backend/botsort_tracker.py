@@ -98,6 +98,20 @@ class BoTSortTracker:
         self._tracker = BotSort(**self._tracker_kwargs)
         self._prev_frame_size: tuple[int, int] | None = None  # (h, w) for CMC reset
 
+    def _reset_cmc(self) -> None:
+        """Fully reset CMC (Camera Motion Compensation) internal state.
+
+        BoxMOT's SOF (Sparse Optical Flow) CMC stores prev_frame and
+        prev_keypoints. Both must be cleared to avoid LK pyramid size
+        mismatches when frame resolution changes (iOS, Quest 3, video loops).
+        """
+        if hasattr(self._tracker, "cmc"):
+            cmc = self._tracker.cmc
+            cmc.prev_frame = None
+            cmc.prev_keypoints = None
+            if hasattr(cmc, "initialized"):
+                cmc.initialized = False
+
     def process_frame(self, rgb_frame: np.ndarray) -> list[TrackedDetection]:
         """Detect, track, and extract keypoints for all people in a frame.
 
@@ -116,11 +130,10 @@ class BoTSortTracker:
         frame_area = h * w
 
         # Proactively reset CMC when frame resolution changes to prevent
-        # LK optical flow pyramid size mismatch (Quest 3 sends variable sizes)
+        # LK optical flow pyramid size mismatch (Quest 3 / iOS send variable sizes)
         cur_size = (h, w)
         if self._prev_frame_size is not None and cur_size != self._prev_frame_size:
-            if hasattr(self._tracker, "cmc"):
-                self._tracker.cmc.prev_img = None
+            self._reset_cmc()
         self._prev_frame_size = cur_size
 
         # --- Step 1: YOLO detection (no tracking) ---
@@ -166,14 +179,13 @@ class BoTSortTracker:
         # --- Step 2: BoT-SORT tracking ---
         try:
             tracked = self._tracker.update(dets, rgb_frame)
-        except cv2.error:
-            # CMC optical flow fails when frame size changes (e.g. video loop)
+        except (cv2.error, Exception) as exc:
+            # CMC optical flow fails when frame size changes (e.g. video loop, iOS)
             # Reset CMC state and retry
-            if hasattr(self._tracker, "cmc"):
-                self._tracker.cmc.prev_img = None
+            self._reset_cmc()
             try:
                 tracked = self._tracker.update(dets, rgb_frame)
-            except cv2.error:
+            except (cv2.error, Exception):
                 # Still failing — skip this frame
                 return []
         # tracked shape: (M, 8) = [x1, y1, x2, y2, track_id, conf, cls, det_ind]

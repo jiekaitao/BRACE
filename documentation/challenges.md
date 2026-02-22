@@ -20,6 +20,9 @@ End-to-end latency (camera capture → network → GPU inference → response) i
 ### Challenge: Silent Failure Chain on Quest 3
 The VR pipeline has multiple stages (camera → JPEG → WebSocket → server → JSON → bounding boxes), and if any stage fails silently the user sees nothing but the controller beam with no indication of what's wrong. Root causes included: (1) `[SerializeField]` references defaulting to null when not manually wired in Inspector, (2) WebSocket connection failures producing no on-screen feedback, (3) `Shader.Find()` returning null for shaders not included in the Android build. We fixed this by adding `FindObjectOfType` auto-wiring as fallback for all component references, a shader fallback chain (URP Unlit → Sprites/Default → Unlit/Color), auto-reconnect on WebSocket disconnect, and a DebugHUD overlay that shows live pipeline status (WS connected/disconnected, camera capturing/waiting, frames sent/received, box count).
 
+### Challenge: Bounding Boxes Huge and Misplaced in VR (Camera Projection Mismatch)
+The `/dev/streams/` debug page renders bounding boxes correctly (server-side, drawn directly on the image), but on the Quest 3 headset the same boxes appear very large and scattered. The root cause is a camera projection mismatch: the bbox coordinates are normalized [0,1] relative to the **passthrough camera's image**, but the Unity code converts them to 3D world space using `Camera.ViewportToWorldPoint`, which maps through the **VR rendering camera's frustum**. These two cameras have different FOVs and projections — the passthrough camera is wider-angle — so the mapping diverges badly at the edges. Combined with `assumedDepth = 3f` (3 meters), even small angular errors become large positional errors in world space. The fix must happen in the Unity code: either use the passthrough camera's actual intrinsics to project [0,1] image coords → 3D rays, or apply a scale/offset correction to remap passthrough image coords into VR camera viewport space before calling `ViewportToWorldPoint`.
+
 ### Challenge: OpenCV LK Pyramid Size Mismatch (Quest 3)
 BoT-SORT's Camera Motion Compensation (CMC) uses Lucas-Kanade sparse optical flow to estimate camera motion between consecutive frames. When the Quest 3 passthrough camera sends frames with inconsistent resolutions (due to encoding changes, resolution renegotiation, or capture timing), the optical flow pyramid built from the previous frame doesn't match the current frame's size, causing `cv2.error: (-215:Assertion failed) prevPyr[level * lvlStep1].size() == nextPyr[level * lvlStep2].size()`. The existing try/except caught and retried, but the error spammed logs on every frame. We fixed it by tracking the previous frame size in `BoTSortTracker` and proactively resetting `cmc.prev_img = None` when the resolution changes, preventing the error entirely.
 
@@ -30,6 +33,16 @@ The `person_embeddings` collection was created with 768 dimensions (for CLIP emb
 
 ### Challenge: VectorAI Treated as Optional Despite Being Required
 All VectorAI code used "graceful degradation" — failures were silently swallowed with `if _vectorai_store is None: return`. This meant the feature was broken for months without anyone noticing. Motion segment storage was scaffolded but never called from the pipeline, and `VectorActivityClassifier` was passed to the basketball processor but never used. We made VectorAI a hard requirement: the backend raises at startup if VectorAI is unreachable, imports are no longer wrapped in try/except, and motion segment storage is now wired into `StreamingAnalyzer.run_analysis()` so cross-session movement search actually has data.
+
+## Concussion Risk Detection
+
+## Team Detection
+
+### Challenge: Gemini Color Strings Fragile for Team Clustering
+Gemini 2.5 Flash returns jersey color as a free-text string ("dark blue", "navy", "blue"), and the original `cluster_teams()` function groups by exact string match. This meant the same team could be split into multiple "teams" if Gemini returned slightly different color descriptions across subjects. We solved this by adding `cluster_teams_visual()` — a K-Means clustering approach on HSV color histograms extracted from actual player crops. Each crop's upper 60% (torso region) is converted to HSV, binned into a 16-hue x 8-saturation = 128-dim normalized histogram, then all subjects are clustered via K-Means (k=2). This is robust to lighting variation and Gemini wording inconsistency. Representative team colors are derived from the mean HSV of each cluster's torso pixels and converted to hex for frontend display.
+
+### Challenge: Uniform-Color Histograms Break K-Means in Tests
+During testing, synthetic solid-color crops produced delta-function histograms (single bin = 1.0, 127 bins = 0.0). In 128-dim space, the Euclidean distance between any two such histograms is always sqrt(2) unless they hit the exact same bin. Adjacent hue bins (e.g., bin 6 vs bin 7 for two shades of red) were equidistant from blue bins (86, 87), so K-Means couldn't distinguish teams. Adding +-15 pixel noise to test crops produced realistic multi-bin histogram spread, fixing the clustering.
 
 ## Concussion Risk Detection
 
