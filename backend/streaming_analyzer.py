@@ -71,13 +71,6 @@ try:
 except ImportError:
     from movement_quality import MovementQualityTracker
 
-try:
-    from backend.voice_alerts import VoiceAlertGenerator
-except ImportError:
-    try:
-        from voice_alerts import VoiceAlertGenerator
-    except ImportError:
-        VoiceAlertGenerator = None
 
 
 class StreamingAnalyzer:
@@ -159,8 +152,6 @@ class StreamingAnalyzer:
         self._quality_tracker = MovementQualityTracker(fps=fps, risk_modifiers=risk_modifiers)
         self._cluster_quality: dict[int, dict] = {}  # per-cluster quality analysis
 
-        # Voice alert generator for injury risk coaching
-        self._voice_alerts: VoiceAlertGenerator | None = VoiceAlertGenerator() if VoiceAlertGenerator is not None else None
 
     def process_frame(self, landmarks_xyzv: np.ndarray | None, img_wh: tuple[int, int] | None = None) -> dict[str, Any]:
         """Fast path: normalize + feature extract a single frame.
@@ -453,8 +444,6 @@ class StreamingAnalyzer:
         self._fatigue_ema = 0.0
         self._quality_tracker.reset()
         self._cluster_quality = {}
-        if self._voice_alerts is not None:
-            self._voice_alerts = VoiceAlertGenerator() if VoiceAlertGenerator is not None else None
 
     def note_loop_boundary(self) -> None:
         """Freeze analysis when a video loop is detected.
@@ -769,14 +758,6 @@ class StreamingAnalyzer:
         if quality:
             result["quality"] = quality
 
-            # Generate voice alert from injury risks
-            if self._voice_alerts and quality.get("injury_risks"):
-                alert_text = self._voice_alerts.generate_alert_text(
-                    quality["injury_risks"],
-                    active_guideline=quality.get("active_guideline"),
-                )
-                if alert_text:
-                    result["alert_text"] = alert_text
 
         return result
 

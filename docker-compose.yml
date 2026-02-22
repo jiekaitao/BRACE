@@ -5,8 +5,6 @@ x-backend-common: &backend-common
     - PIPELINE_BACKEND=${PIPELINE_BACKEND:-legacy}
     - GOOGLE_GEMINI_API_KEY=${GOOGLE_GEMINI_API_KEY:-}
     - MONGODB_URI=mongodb://mongo:27017/brace
-    - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
-    - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-}
     - VECTORAI_HOST=vectorai
     - VECTORAI_PORT=50051
   depends_on:
@@ -29,12 +27,15 @@ x-backend-common: &backend-common
     - ./backend/auth.py:/app/auth.py:ro
     - ./backend/risk_profile.py:/app/risk_profile.py:ro
     - ./backend/chat_agent.py:/app/chat_agent.py:ro
-    - ./backend/voice_alerts.py:/app/voice_alerts.py:ro
-    - ./backend/tts_elevenlabs.py:/app/tts_elevenlabs.py:ro
     - ./backend/device_utils.py:/app/device_utils.py:ro
     - ./backend/vectorai_store.py:/app/vectorai_store.py:ro
     - ./backend/vector_movement_search.py:/app/vector_movement_search.py:ro
     - ./backend/concussion_pipeline.py:/app/concussion_pipeline.py:ro
+    - ./backend/jersey_detector.py:/app/jersey_detector.py:ro
+    - ./backend/player_risk_engine.py:/app/player_risk_engine.py:ro
+    - ./backend/basketball_processor.py:/app/basketball_processor.py:ro
+    - ./backend/vector_activity_classifier.py:/app/vector_activity_classifier.py:ro
+    - ./backend/dashboard_api.py:/app/dashboard_api.py:ro
     - ./backend/vdss_proto:/app/vdss_proto:ro
     - ./brace/core/motion_segments.py:/app/brace/core/motion_segments.py:ro
     - huggingface_cache:/root/.cache/huggingface

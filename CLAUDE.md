@@ -41,7 +41,7 @@ The `run.sh` script auto-detects which profile to use based on the OS and GPU av
 
 **Docker services**: Frontend (3000), Backend (8001→8000), MongoDB (27017, internal), VectorAI (5555→50051, optional).
 
-**Hot-reload in production compose**: These files are bind-mounted and take effect on `docker compose restart backend` (or `backend-cpu` on Mac): `main.py`, `streaming_analyzer.py`, `subject_manager.py`, `gemini_classifier.py`, `tensorrt_utils.py`, `identity_resolver.py`, `multi_person_tracker.py`, `botsort_tracker.py`, `movement_quality.py`, `movement_guidelines.py`, `motion_segments.py`, `risk_profile.py`, `chat_agent.py`, `voice_alerts.py`, `vectorai_store.py`, `vector_movement_search.py`. All other backend changes require rebuilding the backend image. New files require adding a bind-mount in `docker-compose.yml` and running `docker compose up -d backend` (recreate, not just restart).
+**Hot-reload in production compose**: These files are bind-mounted and take effect on `docker compose restart backend` (or `backend-cpu` on Mac): `main.py`, `streaming_analyzer.py`, `subject_manager.py`, `gemini_classifier.py`, `tensorrt_utils.py`, `identity_resolver.py`, `multi_person_tracker.py`, `botsort_tracker.py`, `movement_quality.py`, `movement_guidelines.py`, `motion_segments.py`, `risk_profile.py`, `chat_agent.py`, `vectorai_store.py`, `vector_movement_search.py`. All other backend changes require rebuilding the backend image. New files require adding a bind-mount in `docker-compose.yml` and running `docker compose up -d backend` (recreate, not just restart).
 
 **Dev mode** (`docker-compose.dev.yml`): Volume-mounts entire `backend/` and `brace/` directories with `uvicorn --reload` for automatic Python hot-reload.
 
@@ -175,9 +175,6 @@ Analyze (/analyze) — real-time motion analysis with personalized thresholds
 
 `RiskModifiers` (from `risk_profile.py`) scale biomechanical thresholds per-injury (e.g., ACL → lower FPPA threshold). Applied per-frame in `MovementQualityTracker`. Stored in MongoDB via `AuthUser.injury_profile` + `AuthUser.risk_modifiers`.
 
-### Voice Coaching
-
-Real-time injury risk alerts via ElevenLabs TTS. `VoiceAlertGenerator` (`voice_alerts.py`) deduplicates alerts with 8s cooldown, requires 3s sustained medium-risk before alerting. Frontend toggle via `useVoiceCoaching` hook.
 
 ### Offline Analysis Pipelines (secondary)
 
@@ -201,9 +198,7 @@ Real-time injury risk alerts via ElevenLabs TTS. `VoiceAlertGenerator` (`voice_a
 - `backend/auth.py` — Session-based authentication (username + UUID token)
 - `backend/chat_agent.py` — Gemini 2.5 Pro injury intake agent (multi-turn, extracts structured `InjuryProfile` JSON). Uses `gemini-2.5-pro` model, NOT flash.
 - `backend/risk_profile.py` — `RiskModifiers` dataclass, per-injury threshold scaling (FPPA, hip drop, trunk lean, asymmetry, angular velocity), `apply_modifiers()` for personalization
-- `backend/voice_alerts.py` — `VoiceAlertGenerator` with cooldown/dedup for real-time injury risk alerts
 - `backend/vector_movement_search.py` — `MovementSearchEngine` for semantic cross-session motion similarity via VectorAI
-- `backend/tts_elevenlabs.py` — ElevenLabs TTS integration
 - `backend/vectorai_store.py` — VectorAI gRPC integration for semantic movement search (optional, graceful degradation)
 - `brace/core/motion_segments.py` — SRP normalization, velocity segmentation, agglomerative clustering, consistency
 
@@ -219,7 +214,7 @@ Real-time injury risk alerts via ElevenLabs TTS. `VoiceAlertGenerator` (`voice_a
 **Hooks:**
 - `frontend/src/hooks/useAnalysisWebSocket.ts` — WebSocket lifecycle, frame capture (480p, JPEG 0.65), multi-subject state
 - `frontend/src/hooks/useChat.ts` — Injury intake chat agent (sends to `/api/chat`, extracts `InjuryProfile`, `confirmProfile()`)
-- `frontend/src/hooks/useVoiceCoaching.ts` — ElevenLabs TTS voice alert management
+
 
 **Components:**
 - `frontend/src/components/AnalysisCanvas.tsx` — 2D skeleton overlay (visibility threshold 0.3), receipt-time interpolation at 60fps
@@ -255,7 +250,7 @@ Real-time injury risk alerts via ElevenLabs TTS. `VoiceAlertGenerator` (`voice_a
 - **VectorAI graceful degradation**: If VectorAI DB is unavailable, the system continues without semantic search — all `_vectorai_store` checks are guarded.
 - **Gemini SDK**: Both `GeminiActivityClassifier` and `InjuryChatAgent` use `gemini-2.5-pro` via the `google-genai` SDK (NOT `google-generativeai`). Classifier sends image frames; chat agent does multi-turn text extracting structured JSON `{"injuries": [...], "complete": bool}`.
 - **Risk personalization**: `RiskModifiers` scales thresholds per-metric (`fppa_scale`, `hip_drop_scale`, etc.) + `monitor_joints` list. Applied in `MovementQualityTracker` at runtime. Persisted in MongoDB via auth profile endpoints.
-- **Voice alert dedup**: `VoiceAlertGenerator` has 8s cooldown per alert type, 3s sustained threshold for medium-severity risks, and deduplicates across joints. Alerts are human-readable via `RISK_DESCRIPTIONS` and `JOINT_SPOKEN` mappings.
+
 
 ## Environment Variables
 
@@ -265,7 +260,7 @@ Real-time injury risk alerts via ElevenLabs TTS. `VoiceAlertGenerator` (`voice_a
 | `GOOGLE_GEMINI_API_KEY` | — | Gemini 2.5 Pro (used by both activity classifier and chat agent) |
 | `DISABLE_REID` | — | Set to `1` for pure ByteTrack (no appearance matching) |
 | `YOLO_MODEL` | `yolo11m-pose.pt` | YOLO model file (auto-exports to TensorRT FP16) |
-| `ELEVENLABS_API_KEY` | — | ElevenLabs TTS for voice coaching |
+
 | `MONGODB_URI` | `mongodb://mongo:27017/brace` | MongoDB connection string |
 | `VECTORAI_HOST` / `VECTORAI_PORT` | `vectorai` / `50051` | VectorAI gRPC (optional) |
 | `NEXT_PUBLIC_WS_URL` | auto-detected | WebSocket endpoint override (build-time). Leave unset for auto-detection. |

@@ -68,12 +68,25 @@ try:
 except ImportError:
     _GEMINI_AVAILABLE = False
 
+try:
+    from dashboard_api import router as dashboard_router
+except ImportError:
+    dashboard_router = None
+
+try:
+    from jersey_detector import JerseyDetector
+    _JERSEY_DETECTOR_AVAILABLE = True
+except ImportError:
+    _JERSEY_DETECTOR_AVAILABLE = False
+
 # VectorAI integration (optional — graceful degradation if unavailable)
 _vectorai_store = None
 _movement_search = None
+_vector_classifier = None
 try:
     from vectorai_store import VectorAIStore
     from vector_movement_search import MovementSearchEngine
+    from vector_activity_classifier import VectorActivityClassifier
     _VECTORAI_SDK_AVAILABLE = True
 except ImportError:
     _VECTORAI_SDK_AVAILABLE = False
@@ -101,6 +114,9 @@ if chat_router is not None:
 
 if concussion_router is not None:
     app.include_router(concussion_router)
+
+if dashboard_router is not None:
+    app.include_router(dashboard_router)
 
 if _WEBRTC_AVAILABLE:
     app.include_router(webrtc_api.router)
@@ -194,12 +210,13 @@ def load_models():
     print(f"[startup] Upload dir: {UPLOAD_DIR}", flush=True)
 
     # Initialize VectorAI store (optional — graceful degradation)
-    global _vectorai_store, _movement_search
+    global _vectorai_store, _movement_search, _vector_classifier
     if _VECTORAI_SDK_AVAILABLE:
         try:
             _vectorai_store = VectorAIStore()
             if _vectorai_store.health_check():
                 _movement_search = MovementSearchEngine(_vectorai_store)
+                _vector_classifier = VectorActivityClassifier(_vectorai_store)
                 print("[startup] VectorAI store and search engine initialized", flush=True)
             else:
                 print("[startup] VectorAI not reachable — disabled", flush=True)
@@ -326,36 +343,6 @@ def demo_video_thumbnail(filename: str):
     return Response(content=buf.tobytes(), media_type="image/jpeg")
 
 
-# ---------------------------------------------------------------------------
-# ElevenLabs TTS Endpoint
-# ---------------------------------------------------------------------------
-
-_tts_client = None  # lazy-init on first request
-
-
-@app.get("/api/tts")
-async def tts_endpoint(text: str = Query("")):
-    """Synthesize speech via ElevenLabs. Returns audio/mpeg MP3."""
-    global _tts_client
-    if not text or not text.strip():
-        return Response(status_code=400, content="text parameter required")
-    if _tts_client is None:
-        try:
-            from tts_elevenlabs import ElevenLabsTTS
-        except ImportError:
-            from backend.tts_elevenlabs import ElevenLabsTTS
-        _tts_client = ElevenLabsTTS()
-    if not _tts_client.available:
-        return Response(status_code=503, content="TTS not configured")
-    audio = await asyncio.to_thread(_tts_client.synthesize, text.strip())
-    if audio is None:
-        return Response(status_code=502, content="TTS synthesis failed")
-    return Response(
-        content=audio,
-        media_type="audio/mpeg",
-        headers={"Cache-Control": "public, max-age=86400"},
-    )
-
 
 # ---------------------------------------------------------------------------
 # VectorAI REST API Endpoints
@@ -452,6 +439,303 @@ def person_history(person_id: str):
     except Exception as e:
         return {"error": str(e), "history": []}
 
+
+# ---------------------------------------------------------------------------
+# Game Analysis API Endpoints
+# ---------------------------------------------------------------------------
+
+# In-memory game processing tasks
+_game_tasks: dict[str, asyncio.Task] = {}
+_game_results: dict[str, dict] = {}
+_game_progress_sockets: dict[str, list[WebSocket]] = {}
+
+
+@app.post("/api/games")
+async def create_game(
+    session_id: str = Query(..., description="Upload session ID"),
+    sport: str = Query("basketball", description="Sport type"),
+    user_id: str = Query("", description="Optional user ID"),
+):
+    """Submit a video for game analysis.
+
+    The session_id must reference a previously uploaded video via POST /api/upload.
+    """
+    video_path = _uploads.get(session_id)
+    if not video_path or not video_path.exists():
+        return {"error": "Video not found. Upload first via POST /api/upload."}
+
+    game_id = str(uuid.uuid4())
+
+    # Store game doc in MongoDB
+    try:
+        from db import get_collection, make_game_doc
+        games_col = get_collection("games")
+        doc = make_game_doc(
+            session_id=session_id,
+            video_name=video_path.name,
+            sport=sport,
+            user_id=user_id or None,
+        )
+        doc["_id"] = game_id
+        await games_col.insert_one(doc)
+    except Exception as e:
+        print(f"[game] DB insert failed: {e}", flush=True)
+
+    # Start async processing task
+    task = asyncio.create_task(_process_game_bg(game_id, video_path, sport, user_id))
+    _game_tasks[game_id] = task
+    task.add_done_callback(lambda t: _game_tasks.pop(game_id, None))
+
+    return {"game_id": game_id, "status": "processing"}
+
+
+@app.get("/api/games/{game_id}")
+async def get_game(game_id: str):
+    """Get game analysis status and results."""
+    # Check in-memory results first
+    if game_id in _game_results:
+        return _game_results[game_id]
+
+    # Check if still processing
+    if game_id in _game_tasks:
+        return {"game_id": game_id, "status": "processing"}
+
+    # Check MongoDB
+    try:
+        from db import get_collection
+        games_col = get_collection("games")
+        doc = await games_col.find_one({"_id": game_id})
+        if doc:
+            doc["_id"] = str(doc["_id"])
+            return doc
+    except Exception:
+        pass
+
+    return {"error": "Game not found"}
+
+
+@app.get("/api/games/{game_id}/players")
+async def get_game_players(game_id: str):
+    """List all players detected in a game."""
+    if game_id in _game_results:
+        result = _game_results[game_id]
+        return {"players": list(result.get("players", {}).values())}
+
+    try:
+        from db import get_collection
+        players_col = get_collection("game_players")
+        cursor = players_col.find({"game_id": game_id}).sort("subject_id", 1)
+        results = []
+        async for doc in cursor:
+            doc["_id"] = str(doc["_id"])
+            results.append(doc)
+        return {"players": results}
+    except Exception as e:
+        return {"error": str(e), "players": []}
+
+
+@app.get("/api/games/{game_id}/players/{subject_id}")
+async def get_game_player_detail(game_id: str, subject_id: int):
+    """Get detailed analysis for a specific player."""
+    if game_id in _game_results:
+        result = _game_results[game_id]
+        player = result.get("players", {}).get(str(subject_id))
+        if player:
+            return player
+        return {"error": "Player not found"}
+
+    try:
+        from db import get_collection
+        players_col = get_collection("game_players")
+        doc = await players_col.find_one(
+            {"game_id": game_id, "subject_id": subject_id}
+        )
+        if doc:
+            doc["_id"] = str(doc["_id"])
+            return doc
+        return {"error": "Player not found"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.websocket("/ws/games/{game_id}")
+async def ws_game_progress(websocket: WebSocket, game_id: str):
+    """WebSocket for real-time game processing progress."""
+    await websocket.accept()
+
+    if game_id not in _game_progress_sockets:
+        _game_progress_sockets[game_id] = []
+    _game_progress_sockets[game_id].append(websocket)
+
+    try:
+        # If already complete, send result immediately
+        if game_id in _game_results:
+            await websocket.send_json({
+                "type": "complete",
+                "data": _game_results[game_id],
+            })
+            return
+
+        # Keep connection alive while processing
+        while game_id in _game_tasks:
+            try:
+                # Wait for client messages (keepalive)
+                msg = await asyncio.wait_for(websocket.receive(), timeout=5.0)
+            except asyncio.TimeoutError:
+                # Send heartbeat
+                try:
+                    await websocket.send_json({"type": "heartbeat"})
+                except Exception:
+                    break
+            except WebSocketDisconnect:
+                break
+
+        # Send final result if available
+        if game_id in _game_results:
+            await websocket.send_json({
+                "type": "complete",
+                "data": _game_results[game_id],
+            })
+    except WebSocketDisconnect:
+        pass
+    finally:
+        socks = _game_progress_sockets.get(game_id, [])
+        if websocket in socks:
+            socks.remove(websocket)
+
+
+@app.post("/api/activity-templates")
+async def seed_activity_templates(body: dict):
+    """Seed VectorAI with activity classification templates.
+
+    Body: {"templates": {"label": [feature_vector], ...}}
+    """
+    if _vector_classifier is None:
+        return {"error": "VectorAI not available"}
+
+    templates = body.get("templates", {})
+    seeded = {}
+    for label, features in templates.items():
+        try:
+            arr = np.array(features, dtype=np.float32)
+            _vector_classifier.seed_templates({label: arr})
+            seeded[label] = True
+        except Exception as e:
+            seeded[label] = str(e)
+
+    return {"seeded": seeded}
+
+
+async def _process_game_bg(
+    game_id: str, video_path: Path, sport: str, user_id: str
+) -> None:
+    """Background task to process a game video."""
+    try:
+        from basketball_processor import process_basketball_game
+
+        # Build resolver
+        use_reid = (
+            not DISABLE_REID
+            and _reid_extractor is not None
+            and not isinstance(_reid_extractor, DummyExtractor)
+        )
+        resolver = IdentityResolver(
+            _reid_extractor, vectorai_store=_vectorai_store,
+        ) if use_reid else None
+
+        manager = SubjectManager(fps=30.0, cluster_threshold=2.0)
+
+        # Jersey detector
+        jersey_det = None
+        if _JERSEY_DETECTOR_AVAILABLE and _GEMINI_AVAILABLE:
+            jersey_det = JerseyDetector()
+
+        # Gemini classifier
+        gemini = GeminiActivityClassifier() if _GEMINI_AVAILABLE else None
+
+        # DB collection
+        games_col = None
+        try:
+            from db import get_collection
+            games_col = get_collection("games")
+        except Exception:
+            pass
+
+        async def _progress_cb(pct: float, data: dict):
+            # Broadcast to WebSocket subscribers
+            sockets = _game_progress_sockets.get(game_id, [])
+            for ws in list(sockets):
+                try:
+                    await ws.send_json({
+                        "type": "progress",
+                        "progress": round(pct, 1),
+                        "data": data,
+                    })
+                except Exception:
+                    sockets.remove(ws)
+
+        result = await process_basketball_game(
+            video_path=video_path,
+            game_id=game_id,
+            pipeline=pipeline,
+            resolver=resolver,
+            manager=manager,
+            jersey_detector=jersey_det,
+            gemini_classifier=gemini,
+            vector_classifier=_vector_classifier,
+            db_collection=games_col,
+            progress_callback=_progress_cb,
+            executor=_executor,
+        )
+
+        _game_results[game_id] = result
+
+        # Store player documents in MongoDB
+        try:
+            from db import get_collection, make_game_player_doc
+            players_col = get_collection("game_players")
+            for sid_str, pdata in result.get("players", {}).items():
+                risk = pdata.get("risk") or {}
+                doc = make_game_player_doc(
+                    game_id=game_id,
+                    subject_id=pdata["subject_id"],
+                    label=pdata["label"],
+                    jersey_number=pdata.get("jersey_number"),
+                    jersey_color=pdata.get("jersey_color"),
+                    risk_status=risk.get("status", "GREEN"),
+                    total_frames=pdata.get("total_frames", 0),
+                    injury_events=risk.get("events", []),
+                    workload=risk.get("workload", {}),
+                )
+                await players_col.insert_one(doc)
+        except Exception as e:
+            print(f"[game] player DB insert failed: {e}", flush=True)
+
+        # Notify WebSocket subscribers of completion
+        sockets = _game_progress_sockets.get(game_id, [])
+        for ws in list(sockets):
+            try:
+                await ws.send_json({"type": "complete", "data": result})
+            except Exception:
+                pass
+
+    except Exception as e:
+        print(f"[game] processing failed: {e}", flush=True)
+        _game_results[game_id] = {
+            "game_id": game_id,
+            "status": "error",
+            "error": str(e),
+        }
+        # Update DB
+        try:
+            from db import get_collection
+            games_col = get_collection("games")
+            await games_col.update_one(
+                {"_id": game_id},
+                {"$set": {"status": "error", "error": str(e)}},
+            )
+        except Exception:
+            pass
 
 
 def _gpu_decode_jpeg(jpeg_bytes: bytes) -> np.ndarray:
@@ -602,8 +886,6 @@ def _build_vr_response(
             }
             if "quality" in data:
                 vr_sub["quality"] = data["quality"]
-            if "alert_text" in data:
-                vr_sub["alert_text"] = data["alert_text"]
             vr_subjects[sid_str] = vr_sub
         else:
             # Unselected: bbox + label only (~80 bytes)
@@ -961,8 +1243,6 @@ async def _handle_webcam_mode(
                 }
                 if "quality" in response:
                     subject_out["quality"] = response["quality"]
-                if "alert_text" in response:
-                    subject_out["alert_text"] = response["alert_text"]
                 if embedding_update is not None:
                     subject_out["embedding_update"] = embedding_update
                 if "cluster_representatives" in response:
