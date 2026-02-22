@@ -37,11 +37,11 @@ docker compose --profile nvidia logs -f backend       # Tail backend logs (NVIDI
 - `cpu` — Mac / non-GPU machines. Uses `Dockerfile.cpu` (Python 3.12 slim, CPU PyTorch, onnxruntime CPU).
 - `nvidia` — NVIDIA GPU machines. Uses `Dockerfile` (CUDA 12.8, TensorRT FP16, onnxruntime-gpu).
 
-The `run.sh` script auto-detects which profile to use based on the OS and GPU availability. It also configures Tailscale Funnel for public HTTPS/WSS access (ports 443 & 8443).
+The `run.sh` script auto-detects which profile to use based on the OS and GPU availability. It also starts Cloudflare Tunnel (braceml.com) and Tailscale Funnel for public HTTPS access.
 
-**Docker services**: Frontend (3000), Backend (8001→8000), MongoDB (27017, internal), VectorAI (5555→50051, optional).
+**Docker services**: Caddy (3080→80, reverse proxy), Frontend (3000), Backend (8001→8000), MongoDB (27017, internal), VectorAI (5555→50051, optional).
 
-**Hot-reload in production compose**: These files are bind-mounted and take effect on `docker compose restart backend` (or `backend-cpu` on Mac): `main.py`, `streaming_analyzer.py`, `subject_manager.py`, `gemini_classifier.py`, `tensorrt_utils.py`, `identity_resolver.py`, `multi_person_tracker.py`, `botsort_tracker.py`, `movement_quality.py`, `movement_guidelines.py`, `motion_segments.py`, `risk_profile.py`, `chat_agent.py`, `vectorai_store.py`, `vector_movement_search.py`. All other backend changes require rebuilding the backend image. New files require adding a bind-mount in `docker-compose.yml` and running `docker compose up -d backend` (recreate, not just restart).
+**Hot-reload in production compose**: These files are bind-mounted and take effect on `docker compose restart backend` (or `backend-cpu` on Mac): `main.py`, `streaming_analyzer.py`, `subject_manager.py`, `gemini_classifier.py`, `tensorrt_utils.py`, `identity_resolver.py`, `multi_person_tracker.py`, `botsort_tracker.py`, `movement_quality.py`, `movement_guidelines.py`, `motion_segments.py`, `risk_profile.py`, `chat_agent.py`, `device_utils.py`, `vectorai_store.py`, `vector_movement_search.py`, `concussion_pipeline.py`, `jersey_detector.py`, `player_risk_engine.py`, `basketball_processor.py`, `vector_activity_classifier.py`, `dashboard_api.py`, `db.py`, `auth.py`. All other backend changes require rebuilding the backend image. New files require adding a bind-mount in `docker-compose.yml` and running `docker compose up -d backend` (recreate, not just restart).
 
 **Dev mode** (`docker-compose.dev.yml`): Volume-mounts entire `backend/` and `brace/` directories with `uvicorn --reload` for automatic Python hot-reload.
 
@@ -62,23 +62,20 @@ Note: Some tests require GPU-only dependencies (`ultralytics`, `motor`) and will
 cd frontend && npx tsc --noEmit         # Type-check (run before committing)
 ```
 
-### Remote Access (Tailscale)
+### Remote Access
+
+**Caddy reverse proxy** (Docker, port 3080): Routes `/ws/*` and `/api/*` to backend, everything else to frontend. All remote access goes through Caddy for unified path-based routing.
+
+**Cloudflare Tunnel** (braceml.com): `run.sh` auto-starts `cloudflared tunnel run brace`. Config at `~/.cloudflared/config.yml` routes both `braceml.com` and `ws.braceml.com` to Caddy (`localhost:3080`). Logs at `/tmp/cloudflared.log`.
+
+**Tailscale Funnel** (baby-gator.tailea0e34.ts.net): `run.sh` auto-starts Funnel on port 443 pointing to `localhost:3000`. For proper `/ws/*` routing, point Funnel to Caddy instead: `tailscale funnel --bg --https=443 http://localhost:3080`.
+
 ```bash
-# One-time setup (needs sudo once):
-sudo tailscale set --operator=$USER
-
-# Serve frontend (HTTPS) and backend (WSS) over Tailscale:
-tailscale serve --bg --https=443 http://localhost:3000
-tailscale serve --bg --https=8443 http://localhost:8001
-
-# Access from any device on the tailnet:
-# https://baby-gator.tailea0e34.ts.net/          (frontend)
-# wss://baby-gator.tailea0e34.ts.net:8443/       (backend WebSocket)
 tailscale serve status                   # Check what's being served
 tailscale serve reset                    # Remove all serve configs
 ```
 
-HTTPS is required for `getUserMedia` (webcam) from remote devices. The frontend detects `https:` and automatically connects to the backend on port 8443 instead of 8000.
+HTTPS is required for `getUserMedia` (webcam) from remote devices. The frontend auto-detects `https:` and uses same-origin WebSocket (`wss://<hostname>/ws/analyze`) — Caddy routes this to the backend.
 
 ## Architecture
 
@@ -175,6 +172,27 @@ Analyze (/analyze) — real-time motion analysis with personalized thresholds
 
 `RiskModifiers` (from `risk_profile.py`) scale biomechanical thresholds per-injury (e.g., ACL → lower FPPA threshold). Applied per-frame in `MovementQualityTracker`. Stored in MongoDB via `AuthUser.injury_profile` + `AuthUser.risk_modifiers`.
 
+### Basketball Game Analysis
+
+Offline video processing pipeline for team sports. Processes full game video → per-player biomechanics, risk status, and workload.
+
+```
+POST /api/games?session_id=<ID> → basketball_processor.process_basketball_game()
+  ↓
+Frame loop: PoseBackend → IdentityResolver (jersey detection via Gemini 2.5 Flash) → per-player StreamingAnalyzer
+  ↓
+PlayerRiskEngine: consolidates injury events → GREEN/YELLOW/RED status → pull recommendations
+  ↓
+Results stored in MongoDB (game docs, player docs, frame docs)
+  ↓
+WS /ws/games/{game_id} → real-time progress to frontend dashboard
+```
+
+**Key endpoints**: `POST /api/games` (submit video), `GET /api/games/{game_id}` (status), `GET /api/games/{game_id}/players` (player list), `WS /ws/games/{game_id}` (progress).
+
+**Movement profiles**: Basketball-specific profiles (LANDING, CUTTING, SHOOTING, DRIBBLING, DEFENSE) in `movement_guidelines.py` with sport-specific FPPA/hip-drop/trunk-lean thresholds.
+
+**Jersey detection**: `JerseyDetector` uses `gemini-2.5-flash` to identify jersey numbers/colors from cropped player images. Results fed to `IdentityResolver` for cross-cut identity merging.
 
 ### Offline Analysis Pipelines (secondary)
 
@@ -200,6 +218,12 @@ Analyze (/analyze) — real-time motion analysis with personalized thresholds
 - `backend/risk_profile.py` — `RiskModifiers` dataclass, per-injury threshold scaling (FPPA, hip drop, trunk lean, asymmetry, angular velocity), `apply_modifiers()` for personalization
 - `backend/vector_movement_search.py` — `MovementSearchEngine` for semantic cross-session motion similarity via VectorAI
 - `backend/vectorai_store.py` — VectorAI gRPC integration for semantic movement search (optional, graceful degradation)
+- `backend/basketball_processor.py` — Async game analysis pipeline: video → per-player biomechanics + risk status
+- `backend/player_risk_engine.py` — `PlayerRiskEngine`: GREEN/YELLOW/RED status, injury event consolidation, workload tracking, pull recommendations
+- `backend/jersey_detector.py` — `JerseyDetector` using Gemini 2.5 Flash for jersey number/color identification
+- `backend/dashboard_api.py` — Workout history, trend charts, and guideline API endpoints
+- `backend/vector_activity_classifier.py` — VectorAI fast-path activity classification wrapper
+- `backend/concussion_pipeline.py` — Concussion risk scoring pipeline
 - `brace/core/motion_segments.py` — SRP normalization, velocity segmentation, agglomerative clustering, consistency
 
 ## Key Frontend Files
@@ -207,12 +231,13 @@ Analyze (/analyze) — real-time motion analysis with personalized thresholds
 **Pages:**
 - `frontend/src/app/page.tsx` — Landing page with personal/team path selection
 - `frontend/src/app/onboarding/page.tsx` — Multi-step onboarding (login, injury chat, profile review, mode select)
-- `frontend/src/app/dashboard/page.tsx` — Personalized dashboard for returning users
+- `frontend/src/app/dashboard/page.tsx` — Personalized dashboard with workout list + trends
+- `frontend/src/app/dashboard/workout/[id]/page.tsx` — Individual workout detail with biomechanics charts
 - `frontend/src/app/analyze/page.tsx` — Main analysis page (webcam/video/demo modes)
 - `frontend/src/app/dev/` — Development sandbox pages (auth, chat, components, risk-profile, voice, timeline)
 
 **Hooks:**
-- `frontend/src/hooks/useAnalysisWebSocket.ts` — WebSocket lifecycle, frame capture (480p, JPEG 0.65), multi-subject state
+- `frontend/src/hooks/useAnalysisWebSocket.ts` — WebSocket lifecycle, frame capture (480p, JPEG 0.65), multi-subject state, game progress handling
 - `frontend/src/hooks/useChat.ts` — Injury intake chat agent (sends to `/api/chat`, extracts `InjuryProfile`, `confirmProfile()`)
 
 
@@ -225,9 +250,12 @@ Analyze (/analyze) — real-time motion analysis with personalized thresholds
 - `frontend/src/components/AnimatedSkeletonDemo.tsx` — Real-time animated skeleton with injury-specific joint angle visualization
 - `frontend/src/components/TeamSportBrowser.tsx` — Sport selection for team monitoring mode
 - `frontend/src/components/InjuryProfileCard.tsx` — Display/edit injury profile with severity badges
+- `frontend/src/components/PlayerRiskBadge.tsx` — GREEN/YELLOW/RED risk status badge for game analysis
+- `frontend/src/components/dashboard/` — BiomechanicsChart, GuidelinesPanel, TrendCharts, WorkoutListItem
 
 **Lib:**
-- `frontend/src/lib/api.ts` — `getApiBase()` / `getWsBase()` — auto-detects HTTP/HTTPS and correct backend port (8000 local, 8443 Tailscale)
+- `frontend/src/lib/api.ts` — `getApiBase()` / `getWsBase()` — auto-detects HTTP/HTTPS; HTTPS uses same-origin (Caddy routes `/ws/*` and `/api/*`), HTTP uses `hostname:8001`
+- `frontend/src/lib/dashboard.ts` — API helpers for workout history, trends, and guideline endpoints
 - `frontend/src/lib/types.ts` — All TypeScript interfaces (SubjectState, PipelineResult, FrameQuality, InjuryProfile, RiskModifiers, etc.)
 - `frontend/src/lib/syntheticMotion.ts` — Synthetic squat cycle generation, joint angle computation, injury-joint chain mappings (frontend port of risk_profile.py)
 - `frontend/src/lib/auth.ts` — Auth helpers for session management
@@ -248,8 +276,10 @@ Analyze (/analyze) — real-time motion analysis with personalized thresholds
 - **Movement quality**: `MovementQualityTracker` runs per-frame (bone-length projection filter, biomechanical angles, joint angular velocity, Isolation Forest anomaly scoring, rule-based injury risk thresholds, Center of Mass estimation, form score, phase detection) and per-cluster (ROM decay, SPARC, LDLJ, EWMA, CUSUM, cross-correlation, sample entropy, spectral median frequency, kinematic chain sequencing, composite fatigue). Composite fatigue is a weighted score: ROM 0.25, EWMA 0.20, CUSUM 0.20, correlation 0.15, SPARC 0.08, LDLJ 0.07, spread 0.05. Form score = deviation from cluster representative trajectory (0-100). The `quality` dict is included in the WebSocket response and stored on `SubjectState.quality` in the frontend.
 - **VR bbox coordinate flip**: BRACE uses image-space y=0 at top; Unity viewport y=0 at bottom. VR clients must flip Y when converting bounding boxes.
 - **VectorAI graceful degradation**: If VectorAI DB is unavailable, the system continues without semantic search — all `_vectorai_store` checks are guarded.
-- **Gemini SDK**: Both `GeminiActivityClassifier` and `InjuryChatAgent` use `gemini-2.5-pro` via the `google-genai` SDK (NOT `google-generativeai`). Classifier sends image frames; chat agent does multi-turn text extracting structured JSON `{"injuries": [...], "complete": bool}`.
+- **Gemini SDK**: Uses `google-genai` SDK (NOT `google-generativeai`). `GeminiActivityClassifier` and `InjuryChatAgent` use `gemini-2.5-pro`; `JerseyDetector` uses `gemini-2.5-flash`. Classifier sends image frames; chat agent does multi-turn text extracting structured JSON `{"injuries": [...], "complete": bool}`.
 - **Risk personalization**: `RiskModifiers` scales thresholds per-metric (`fppa_scale`, `hip_drop_scale`, etc.) + `monitor_joints` list. Applied in `MovementQualityTracker` at runtime. Persisted in MongoDB via auth profile endpoints.
+- **UMAP embedding**: Background async refit produces `"full"` update (all points + cluster IDs). Between refits, `run_umap_transform()` uses nearest-neighbor lookup in feature space (NOT UMAP `transform()` which is too noisy for single points) and sends `"current_only"` with just the index. Frontend handles three message types: `"full"` (replace all), `"append"` (add points — blocked during replay), `"current_only"` (snap current position to nearest existing point).
+- **Player risk engine**: `PlayerRiskEngine` tracks per-player injury events, workload (active/rest/high-intensity seconds), and determines GREEN/YELLOW/RED status. RED triggers pull recommendation. Activity-specific fatigue thresholds (basketball LANDING has lower threshold than DRIBBLING).
 
 
 ## Environment Variables
@@ -257,10 +287,9 @@ Analyze (/analyze) — real-time motion analysis with personalized thresholds
 | Variable | Default | Description |
 |---|---|---|
 | `PIPELINE_BACKEND` | `legacy` | `legacy` or `advanced` |
-| `GOOGLE_GEMINI_API_KEY` | — | Gemini 2.5 Pro (used by both activity classifier and chat agent) |
+| `GOOGLE_GEMINI_API_KEY` | — | Gemini (activity classifier, chat agent, jersey detector) |
 | `DISABLE_REID` | — | Set to `1` for pure ByteTrack (no appearance matching) |
 | `YOLO_MODEL` | `yolo11m-pose.pt` | YOLO model file (auto-exports to TensorRT FP16) |
-
 | `MONGODB_URI` | `mongodb://mongo:27017/brace` | MongoDB connection string |
 | `VECTORAI_HOST` / `VECTORAI_PORT` | `vectorai` / `50051` | VectorAI gRPC (optional) |
 | `NEXT_PUBLIC_WS_URL` | auto-detected | WebSocket endpoint override (build-time). Leave unset for auto-detection. |
@@ -268,6 +297,6 @@ Analyze (/analyze) — real-time motion analysis with personalized thresholds
 
 ## Testing
 
-350 tests using synthetic skeleton data (sinusoidal motion with fixed anchor joints). All tests must pass before any commit. Key test files: `test_movement_quality.py` (99), `test_movement_guidelines.py` (33), `test_motion_clustering.py` (23), `test_gemini_classifier.py` (22), `test_botsort_tracker.py` (16), `test_identity_resolver.py` (15), `test_pipeline_interface.py` (20).
+~473 tests using synthetic skeleton data (sinusoidal motion with fixed anchor joints). All tests must pass before any commit. Key test files: `test_movement_quality.py` (99), `test_movement_guidelines.py` (33), `test_basketball_profiles.py` (35), `test_player_risk_engine.py` (31), `test_jersey_detector.py` (27), `test_motion_clustering.py` (23), `test_gemini_classifier.py` (22), `test_pipeline_interface.py` (20), `test_identity_resolver.py` (15), `test_identity_resolver_jersey.py` (20), `test_game_api.py` (14), `test_botsort_tracker.py` (16).
 
-Some tests (`test_auth.py`, `test_botsort_tracker.py`, `test_chat_agent.py`, `test_identity_resolver.py`, `test_multi_person.py`, `test_pipeline_interface.py`, `test_db.py`) require GPU-only dependencies and will only pass inside Docker containers.
+Some tests (`test_auth.py`, `test_botsort_tracker.py`, `test_chat_agent.py`, `test_identity_resolver.py`, `test_identity_resolver_jersey.py`, `test_multi_person.py`, `test_pipeline_interface.py`, `test_db.py`) require GPU-only dependencies and will only pass inside Docker containers.

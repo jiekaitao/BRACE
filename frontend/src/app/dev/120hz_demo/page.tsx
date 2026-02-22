@@ -315,11 +315,11 @@ export default function HighFpsDemo() {
         <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/60 rounded-full px-2.5 py-1 z-20">
           <div
             className={`w-2 h-2 rounded-full ${
-              connected ? "bg-[#58CC02]" : "bg-[#EA2B2B]"
+              connected === "connected" ? "bg-[#58CC02]" : connected === "connecting" ? "bg-[#F5A623] animate-pulse" : "bg-[#EA2B2B]"
             }`}
           />
           <span className="text-[11px] font-bold text-white/80">
-            {connected ? "Live" : "Connecting..."}
+            {connected === "connected" ? "Live" : connected === "connecting" ? "Connecting..." : "Offline"}
           </span>
         </div>
 

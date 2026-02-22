@@ -222,12 +222,21 @@ function AnalyzeContent() {
     }
   }, [startCapture]);
 
-  // When demo video can play, start playback
+  // When demo video can play AND pipeline is connected, start playback
+  const demoVideoCanPlayRef = useRef(false);
   const onDemoVideoReady = useCallback(() => {
-    if (demoVideoRef.current) {
+    demoVideoCanPlayRef.current = true;
+    if (connected === "connected" && demoVideoRef.current) {
       demoVideoRef.current.play().catch(() => { });
     }
-  }, []);
+  }, [connected]);
+
+  // Start demo video when connection becomes ready (if video already loaded)
+  useEffect(() => {
+    if (connected === "connected" && demoVideoCanPlayRef.current && demoVideoRef.current?.paused) {
+      demoVideoRef.current.play().catch(() => { });
+    }
+  }, [connected]);
 
   // Mode switch
   const switchMode = useCallback(
@@ -280,11 +289,11 @@ function AnalyzeContent() {
               <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/60 rounded-full px-2.5 py-1 z-20">
                 <div
                   className={`w-2 h-2 rounded-full ${
-                    !connected ? "bg-[#EA2B2B]" : replaying ? "bg-[#F5A623]" : "bg-[#58CC02]"
+                    connected === "disconnected" ? "bg-[#EA2B2B]" : connected === "connecting" ? "bg-[#F5A623] animate-pulse" : replaying ? "bg-[#F5A623]" : "bg-[#58CC02]"
                   }`}
                 />
                 <span className="text-[11px] font-bold text-white/80">
-                  {!connected ? "Offline" : replaying ? "Replaying" : "Live"}
+                  {connected === "disconnected" ? "Offline" : connected === "connecting" ? "Connecting" : replaying ? "Replaying" : "Live"}
                 </span>
               </div>
 
@@ -304,7 +313,6 @@ function AnalyzeContent() {
                     className="w-full h-full object-contain"
                     playsInline
                     muted
-                    autoPlay
                     loop
                     onCanPlay={onDemoVideoReady}
                   />

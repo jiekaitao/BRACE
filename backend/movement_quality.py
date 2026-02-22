@@ -1162,8 +1162,10 @@ class MovementQualityTracker:
         self._head_prev_ear_angle = ear_angle
         self._head_angular_vel = angular_vel
 
-        # --- Adaptive baseline (slow EMA of head speed) ---
-        _BASELINE_ALPHA = 0.01
+        # --- Adaptive baseline (EMA of head speed) ---
+        # α=0.02: adapts in ~50 frames (1.7s) so normal athletic motion
+        # raises the baseline quickly, preventing false spike z-scores.
+        _BASELINE_ALPHA = 0.02
         if not self._head_vel_baseline_initialized:
             self._head_vel_baseline_ema = head_speed
             self._head_vel_baseline_initialized = True
@@ -1178,13 +1180,28 @@ class MovementQualityTracker:
         z_score = (head_speed - baseline) / baseline
         self._head_spike_z = max(z_score, 0.0)
 
-        # --- Composite score (0–100) ---
-        # Accel component: normal basketball <2g, threshold at 15g (concussive range)
-        accel_component = min(accel_g / 15.0, 1.0) * 40.0
-        # Angular component: normal head turn ~2-5 rad/s, whiplash >15 rad/s
-        angular_component = min(angular_vel / 25.0, 1.0) * 35.0
-        # Spike component: sudden head speed deviation
-        spike_component = min(max(self._head_spike_z - 2.0, 0.0) / 5.0, 1.0) * 25.0
+        # --- Composite score (0–100) with dead zones ---
+        # Dead zones: normal athletic motion (running, jumping, head turns)
+        # doesn't score.  Only motion above these floors contributes.
+        #
+        # Video-based 2D estimation at 30fps amplifies noise through
+        # double-differentiation, so floors are set above typical
+        # basketball values (5-8g accel, 8-12 rad/s angular).
+        _ACCEL_FLOOR_G = 5.0       # below 5g = normal athletic motion
+        _ACCEL_RANGE_G = 45.0      # 5g → 50g maps to 0 → 40 pts
+        _ANGULAR_FLOOR_RPS = 10.0  # below 10 rad/s = normal head turns
+        _ANGULAR_RANGE_RPS = 20.0  # 10 → 30 rad/s maps to 0 → 35 pts
+        _SPIKE_FLOOR_Z = 3.0       # z-score below 3 = normal variation
+        _SPIKE_RANGE_Z = 7.0       # z 3 → 10 maps to 0 → 25 pts
+
+        accel_excess = max(accel_g - _ACCEL_FLOOR_G, 0.0)
+        accel_component = min(accel_excess / _ACCEL_RANGE_G, 1.0) * 40.0
+
+        angular_excess = max(angular_vel - _ANGULAR_FLOOR_RPS, 0.0)
+        angular_component = min(angular_excess / _ANGULAR_RANGE_RPS, 1.0) * 35.0
+
+        spike_excess = max(self._head_spike_z - _SPIKE_FLOOR_Z, 0.0)
+        spike_component = min(spike_excess / _SPIKE_RANGE_Z, 1.0) * 25.0
 
         raw_score = accel_component + angular_component + spike_component
 

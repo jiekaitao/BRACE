@@ -1,6 +1,7 @@
 "use client";
 
 import type { ClusterInfo, SubjectState } from "@/lib/types";
+import type { ConnectionStatus } from "@/hooks/useAnalysisWebSocket";
 import { PHASE_COLORS } from "@/lib/colors";
 import Card from "./ui/Card";
 import ClusterSummary from "./ClusterSummary";
@@ -14,7 +15,7 @@ interface StatusHUDProps {
   phase: "calibrating" | "normal" | "anomaly";
   clusterId: number | null;
   clusterSummary: Record<string, ClusterInfo>;
-  connected: boolean;
+  connected: ConnectionStatus;
   activeTrackIds: number[];
   selectedSubjectId: number | null;
   subjectLabels: Record<number, string>;
@@ -57,13 +58,13 @@ export default function StatusHUD({
       <div className="flex items-center gap-2">
         <div
           className="w-2.5 h-2.5 rounded-full"
-          style={{ backgroundColor: connected ? phaseColor : "#EA2B2B" }}
+          style={{ backgroundColor: connected === "connected" ? phaseColor : connected === "connecting" ? "#F5A623" : "#EA2B2B" }}
         />
         <span
           className="text-xs font-bold uppercase tracking-[0.03em]"
-          style={{ color: connected ? phaseColor : "#EA2B2B" }}
+          style={{ color: connected === "connected" ? phaseColor : connected === "connecting" ? "#F5A623" : "#EA2B2B" }}
         >
-          {connected ? PHASE_LABELS[phase] : "Disconnected"}
+          {connected === "connected" ? PHASE_LABELS[phase] : connected === "connecting" ? "Connecting" : "Disconnected"}
         </span>
       </div>
 

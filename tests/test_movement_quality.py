@@ -1417,7 +1417,7 @@ class TestConcussionRating:
         )
 
     def test_sudden_impact_spikes_high(self):
-        """A 100px jump in 1 frame should produce rating >40."""
+        """A 150px jump in 1 frame should produce rating >40."""
         tracker = MovementQualityTracker(fps=30.0)
         joints = _make_straight_joints_2d()
         shoulder_w = 200.0
@@ -1430,8 +1430,8 @@ class TestConcussionRating:
                 head_landmarks=head_normal, shoulder_width_px=shoulder_w,
             )
 
-        # Sudden 100px jump (simulating impact)
-        head_impact = self._make_head_landmarks(nose_x=100.0, lear_x=50.0, rear_x=150.0)
+        # Sudden 150px jump (simulating impact — ~28g at this scale)
+        head_impact = self._make_head_landmarks(nose_x=150.0, lear_x=100.0, rear_x=200.0)
         tracker.process_frame(
             joints, None, None, None, 0.0,
             head_landmarks=head_impact, shoulder_width_px=shoulder_w,
@@ -1470,8 +1470,8 @@ class TestConcussionRating:
                 head_landmarks=head_normal, shoulder_width_px=shoulder_w,
             )
 
-        # Sudden impact
-        head_impact = self._make_head_landmarks(nose_x=100.0, lear_x=50.0, rear_x=150.0)
+        # Sudden impact (150px jump)
+        head_impact = self._make_head_landmarks(nose_x=150.0, lear_x=100.0, rear_x=200.0)
         tracker.process_frame(
             joints, None, None, None, 0.0,
             head_landmarks=head_impact, shoulder_width_px=shoulder_w,
